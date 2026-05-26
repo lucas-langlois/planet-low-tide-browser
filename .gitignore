@@ -1,0 +1,20 @@
+.conda/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Secrets and local runtime config
+.env
+config.py
+
+# CSIRO model file is large and should be supplied locally.
+tide/CSIRO_tidal_const_v12.nc
+*.nc
+
+# Generated outputs
+downloads/
+orders/
+exports/
+logs/

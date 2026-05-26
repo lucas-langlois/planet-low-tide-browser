@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Planet Low Tide Browser</title>
+  <link rel="stylesheet" href="/vendor/leaflet/leaflet.min.css">
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <h1>Planet Low Tide Browser</h1>
+      <p>PlanetScope daily candidates sorted by CSIRO predicted tide.</p>
+    </div>
+    <div class="status" id="runtimeStatus">Checking setup...</div>
+  </header>
+
+  <main class="layout">
+    <aside class="panel controls">
+      <section>
+        <h2>Planet</h2>
+        <label>API key
+          <input id="apiKey" type="password" placeholder="PLAK...">
+        </label>
+        <p class="hint" id="apiHint">A configured key can be loaded from environment or config.py.</p>
+      </section>
+
+      <section>
+        <h2>Area</h2>
+        <div class="segmented">
+          <button class="mode-btn active" data-mode="draw">Draw</button>
+          <button class="mode-btn" data-mode="center">Center</button>
+          <button class="mode-btn" data-mode="upload">Upload</button>
+        </div>
+
+        <div class="mode-panel" id="drawPanel">
+          <div class="button-row">
+            <button id="startDraw">Draw polygon</button>
+            <button id="undoPoint">Undo</button>
+            <button id="clearAoi">Clear</button>
+          </div>
+          <p class="hint">Click map vertices. Double-click or press Save AOI when done.</p>
+          <button id="saveDrawnAoi" class="primary">Save drawn AOI</button>
+        </div>
+
+        <div class="mode-panel hidden" id="centerPanel">
+          <label>Latitude
+            <input id="centerLat" type="number" step="0.000001" value="-19.183638">
+          </label>
+          <label>Longitude
+            <input id="centerLon" type="number" step="0.000001" value="146.682512">
+          </label>
+          <label>Area size (km2)
+            <input id="areaKm2" type="number" step="0.1" min="0.01" value="1">
+          </label>
+          <button id="createSquareAoi" class="primary">Create square AOI</button>
+        </div>
+
+        <div class="mode-panel hidden" id="uploadPanel">
+          <input id="aoiFile" type="file" accept=".geojson,.json,.kml,.zip,.shp">
+          <button id="uploadAoi" class="primary">Upload AOI</button>
+          <p class="hint">Use zipped shapefiles when possible so .shp, .dbf, .shx, and .prj stay together.</p>
+        </div>
+      </section>
+
+      <section>
+        <h2>Search</h2>
+        <label>Start date
+          <input id="startDate" type="date" value="2024-06-01">
+        </label>
+        <label>End date
+          <input id="endDate" type="date" value="2025-05-31">
+        </label>
+        <label>Maximum cloud cover (%)
+          <input id="maxCloud" type="number" min="0" max="100" step="1" value="5">
+        </label>
+        <label>Minimum AOI coverage (%)
+          <input id="minCoverage" type="number" min="0" max="100" step="1" value="80">
+        </label>
+        <label>Maximum scenes
+          <input id="maxResults" type="number" min="1" max="500" step="1" value="100">
+        </label>
+        <label class="check-row">
+          <input id="predictTides" type="checkbox" checked>
+          Predict tide and sort lowest first
+        </label>
+        <button id="searchPlanet" class="primary">Query Planet</button>
+        <p class="hint">Item type is fixed to PlanetScope daily imagery.</p>
+      </section>
+    </aside>
+
+    <section class="workspace">
+      <div id="map"></div>
+
+      <div class="review-grid">
+        <section class="panel candidates">
+          <div class="section-head">
+            <div>
+              <h2>Candidates</h2>
+              <p id="resultSummary">No search run yet.</p>
+            </div>
+            <div class="button-row">
+              <a class="button" href="/export/kept.csv">CSV</a>
+              <a class="button" href="/export/kept.geojson">GeoJSON</a>
+              <button id="orderKept">Order kept</button>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Decision</th>
+                  <th>Item</th>
+                  <th>Acquired</th>
+                  <th>Tide m</th>
+                  <th>Cloud %</th>
+                  <th>AOI %</th>
+                </tr>
+              </thead>
+              <tbody id="resultsBody"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="panel preview">
+          <div class="section-head">
+            <div>
+              <h2>Preview</h2>
+              <p id="selectedMeta">Select a candidate.</p>
+            </div>
+            <div class="button-row">
+              <button id="previewAoi">AOI</button>
+              <button id="previewFull">Full</button>
+              <button id="orderSelected">Order selected</button>
+            </div>
+          </div>
+          <div class="preview-frame">
+            <img id="previewImage" alt="Planet preview">
+          </div>
+          <div class="decision-row">
+            <button id="keepSelected" class="keep">Keep</button>
+            <button id="rejectSelected" class="reject">Reject</button>
+            <button id="pendingSelected">Pending</button>
+          </div>
+          <pre id="messageLog"></pre>
+        </section>
+      </div>
+    </section>
+  </main>
+
+  <script src="/vendor/leaflet/leaflet.min.js"></script>
+  <script src="/static/app.js"></script>
+</body>
+</html>
