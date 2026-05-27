@@ -12,6 +12,7 @@ pytz>=2023.3
 pyshp>=2.3
 pyproj>=3.5
 shapely>=2.0
+timezonefinder>=6.5
 planet>=2.15
 planet-mcp>=0.3
 utide>=0.3

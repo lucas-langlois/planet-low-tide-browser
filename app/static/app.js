@@ -293,7 +293,8 @@ async function queryPlanet() {
     selectedId = results.length ? results[0].id : null;
     renderResults();
     updatePlanetOverlay();
-    $("resultSummary").textContent = `${results.length} candidates. Tide method: ${data.tide.method}, faces: ${data.tide.n_faces}.`;
+    const timezoneText = data.time?.timezone ? ` Local time: ${data.time.timezone}.` : "";
+    $("resultSummary").textContent = `${results.length} candidates. Tide method: ${data.tide.method}, faces: ${data.tide.n_faces}.${timezoneText}`;
     log(`Search complete: ${results.length} candidates. Planet auth: ${data.key_source} ${data.masked_api_key}.`);
   } catch (error) {
     $("resultSummary").textContent = "Search failed.";
@@ -320,7 +321,7 @@ function renderResults() {
         <span class="pill ${status}">${status}</span>
       </td>
       <td class="item-id">${item.id}</td>
-      <td>${(item.acquired || "").replace("T", " ").slice(0, 16)}</td>
+      <td title="UTC: ${(item.acquired_utc || item.acquired || "").replace("T", " ")}">${item.acquired_local || (item.acquired || "").replace("T", " ").slice(0, 16)}</td>
       <td>${item.tide_height ?? ""}</td>
       <td>${item.cloud_cover ?? ""}</td>
       <td>${item.aoi_coverage_percent == null ? "" : item.aoi_coverage_percent.toFixed(1)}</td>

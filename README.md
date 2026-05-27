@@ -30,6 +30,7 @@ The local `.venv` installs:
 - `planet` for Planet Data and Orders API access
 - `planet-mcp` for agent/tool integration
 - Flask for the local web UI
+- `timezonefinder` for converting Planet UTC acquisition times to AOI-local time
 - raster/xarray/UTide dependencies required by `tide/Tide_predictions.py`
 
 Manual setup:
@@ -44,6 +45,9 @@ py -3.11 -m venv .venv
 ## Notes
 
 - The app uses PlanetScope daily imagery only (`PSScene`).
+- Candidate acquisition times are displayed in the local timezone resolved from
+  the AOI centre. If timezone lookup is unavailable, the app falls back to an
+  approximate UTC offset from longitude.
 - Tide prediction is sourced from `tide/Tide_predictions.py`.
 - `CSIRO_tidal_const_v12.nc` is intentionally ignored by git because it is a
   large local model file.

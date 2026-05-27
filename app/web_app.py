@@ -11,10 +11,11 @@ import tempfile
 import time
 import uuid
 import webbrowser
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 from urllib.parse import urljoin
+from zoneinfo import ZoneInfo
 from zipfile import ZipFile
 
 import pandas as pd
@@ -39,6 +40,7 @@ app.secret_key = os.environ.get("PLANET_BROWSER_SECRET_KEY", uuid.uuid4().hex)
 
 APP_STATE: dict[str, dict[str, Any]] = {}
 TIDE_MODEL_CACHE: dict[str, Any] = {}
+TIMEZONE_FINDER: Any | None = None
 
 
 def get_state() -> dict[str, Any]:
@@ -329,6 +331,47 @@ def aoi_center(aoi: dict[str, Any]) -> tuple[float, float]:
     return lat, lon
 
 
+def timezone_from_aoi(aoi: dict[str, Any]) -> tuple[Any, str, str]:
+    lat, lon = aoi_center(aoi)
+    try:
+        global TIMEZONE_FINDER
+        from timezonefinder import TimezoneFinder
+
+        if TIMEZONE_FINDER is None:
+            TIMEZONE_FINDER = TimezoneFinder()
+        finder = TIMEZONE_FINDER
+        tz_name = finder.timezone_at(lng=lon, lat=lat)
+        if not tz_name and hasattr(finder, "closest_timezone_at"):
+            tz_name = finder.closest_timezone_at(lng=lon, lat=lat)
+        if tz_name:
+            return ZoneInfo(tz_name), tz_name, "timezonefinder"
+    except Exception:
+        pass
+
+    offset_hours = max(-12, min(14, round(lon / 15.0)))
+    label = f"UTC{offset_hours:+03d}:00"
+    return timezone(timedelta(hours=offset_hours)), label, "longitude-offset"
+
+
+def add_local_acquired_times(items: list[dict[str, Any]], aoi: dict[str, Any]) -> dict[str, Any]:
+    tzinfo, tz_label, method = timezone_from_aoi(aoi)
+    for item in items:
+        acquired = item.get("acquired")
+        if not acquired:
+            continue
+        ts = pd.Timestamp(acquired)
+        if ts.tzinfo is None:
+            ts = ts.tz_localize("UTC")
+        else:
+            ts = ts.tz_convert("UTC")
+        local = ts.tz_convert(tzinfo)
+        item["acquired_utc"] = ts.isoformat()
+        item["acquired_local"] = local.strftime("%Y-%m-%d %H:%M")
+        item["acquired_local_iso"] = local.isoformat()
+        item["acquired_timezone"] = tz_label
+    return {"timezone": tz_label, "method": method}
+
+
 def item_aoi_coverage(item: dict[str, Any], aoi: dict[str, Any]) -> float | None:
     try:
         from shapely.geometry import shape
@@ -605,7 +648,9 @@ def make_csv(items: list[dict[str, Any]], statuses: dict[str, str]) -> str:
     fields = [
         "item_id",
         "status",
-        "acquired",
+        "acquired_utc",
+        "acquired_local",
+        "acquired_timezone",
         "tide_height_m",
         "cloud_cover_percent",
         "aoi_coverage_percent",
@@ -623,7 +668,9 @@ def make_csv(items: list[dict[str, Any]], statuses: dict[str, str]) -> str:
             {
                 "item_id": item_id,
                 "status": statuses.get(item_id, "pending"),
-                "acquired": item.get("acquired", ""),
+                "acquired_utc": item.get("acquired_utc") or item.get("acquired", ""),
+                "acquired_local": item.get("acquired_local", ""),
+                "acquired_timezone": item.get("acquired_timezone", ""),
                 "tide_height_m": item.get("tide_height", ""),
                 "cloud_cover_percent": item.get("cloud_cover", ""),
                 "aoi_coverage_percent": item.get("aoi_coverage_percent", ""),
@@ -765,6 +812,7 @@ def api_search():
         tide_info = {"n_faces": 0, "method": "not-run"}
         if payload.get("predict_tides", True):
             items, tide_info = predict_tides_for_items(items, aoi)
+        time_info = add_local_acquired_times(items, aoi)
     except Exception as exc:
         return jsonify({"error": f"{str(exc)}\n\nKey source: {key_source} ({mask_api_key(api_key)})"}), 500
 
@@ -773,7 +821,15 @@ def api_search():
     state["aoi"] = aoi
     state["items"] = items
     state["statuses"] = {item["id"]: "pending" for item in items}
-    return jsonify({"items": items, "tide": tide_info, "key_source": key_source, "masked_api_key": mask_api_key(api_key)})
+    return jsonify(
+        {
+            "items": items,
+            "tide": tide_info,
+            "time": time_info,
+            "key_source": key_source,
+            "masked_api_key": mask_api_key(api_key),
+        }
+    )
 
 
 @app.post("/api/validate-key")
