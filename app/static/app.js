@@ -294,7 +294,8 @@ async function queryPlanet() {
     renderResults();
     updatePlanetOverlay();
     const timezoneText = data.time?.timezone ? ` Local time: ${data.time.timezone}.` : "";
-    $("resultSummary").textContent = `${results.length} candidates. Tide method: ${data.tide.method}, faces: ${data.tide.n_faces}.${timezoneText}`;
+    const hiddenText = data.dedupe?.hidden ? ` ${data.dedupe.hidden} same-time scene(s) hidden by keeping best AOI coverage.` : "";
+    $("resultSummary").textContent = `${results.length} candidates. Tide method: ${data.tide.method}, faces: ${data.tide.n_faces}.${timezoneText}${hiddenText}`;
     log(`Search complete: ${results.length} candidates. Planet auth: ${data.key_source} ${data.masked_api_key}.`);
   } catch (error) {
     $("resultSummary").textContent = "Search failed.";

@@ -461,6 +461,56 @@ def normalise_item(item: dict[str, Any], aoi: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
+def acquisition_minute_key(item: dict[str, Any]) -> str:
+    acquired = item.get("acquired") or item.get("properties", {}).get("acquired")
+    if not acquired:
+        return f"missing:{item.get('id', '')}"
+    ts = pd.Timestamp(acquired)
+    if ts.tzinfo is None:
+        ts = ts.tz_localize("UTC")
+    else:
+        ts = ts.tz_convert("UTC")
+    return ts.floor("min").isoformat()
+
+
+def deduplicate_same_time_scenes(items: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], dict[str, int]]:
+    buckets: dict[str, list[dict[str, Any]]] = {}
+    order: list[str] = []
+    for item in items:
+        key = acquisition_minute_key(item)
+        if key not in buckets:
+            buckets[key] = []
+            order.append(key)
+        buckets[key].append(item)
+
+    deduped: list[dict[str, Any]] = []
+    hidden_count = 0
+    duplicate_groups = 0
+    for key in order:
+        group = buckets[key]
+        if len(group) > 1:
+            duplicate_groups += 1
+            hidden_count += len(group) - 1
+        best = max(
+            group,
+            key=lambda item: (
+                item.get("aoi_coverage_percent") if item.get("aoi_coverage_percent") is not None else -1.0,
+                -(item.get("cloud_cover") if item.get("cloud_cover") is not None else 100.0),
+                str(item.get("id") or ""),
+            ),
+        )
+        best["same_time_scene_count"] = len(group)
+        best["same_time_hidden_count"] = len(group) - 1
+        deduped.append(best)
+
+    return deduped, {
+        "hidden": hidden_count,
+        "groups": duplicate_groups,
+        "before": len(items),
+        "after": len(deduped),
+    }
+
+
 def search_planet(
     api_key: str,
     aoi: dict[str, Any],
@@ -654,6 +704,8 @@ def make_csv(items: list[dict[str, Any]], statuses: dict[str, str]) -> str:
         "tide_height_m",
         "cloud_cover_percent",
         "aoi_coverage_percent",
+        "same_time_scene_count",
+        "same_time_hidden_count",
         "visible_percent",
         "clear_percent",
         "satellite_id",
@@ -674,6 +726,8 @@ def make_csv(items: list[dict[str, Any]], statuses: dict[str, str]) -> str:
                 "tide_height_m": item.get("tide_height", ""),
                 "cloud_cover_percent": item.get("cloud_cover", ""),
                 "aoi_coverage_percent": item.get("aoi_coverage_percent", ""),
+                "same_time_scene_count": item.get("same_time_scene_count", 1),
+                "same_time_hidden_count": item.get("same_time_hidden_count", 0),
                 "visible_percent": item.get("visible_percent", ""),
                 "clear_percent": item.get("clear_percent", ""),
                 "satellite_id": item.get("satellite_id", ""),
@@ -809,6 +863,7 @@ def api_search():
             min_aoi_coverage=float(payload.get("min_aoi_coverage", 80)),
             max_results=int(payload.get("max_results", 100)),
         )
+        items, dedupe_info = deduplicate_same_time_scenes(items)
         tide_info = {"n_faces": 0, "method": "not-run"}
         if payload.get("predict_tides", True):
             items, tide_info = predict_tides_for_items(items, aoi)
@@ -826,6 +881,7 @@ def api_search():
             "items": items,
             "tide": tide_info,
             "time": time_info,
+            "dedupe": dedupe_info,
             "key_source": key_source,
             "masked_api_key": mask_api_key(api_key),
         }

@@ -48,6 +48,9 @@ py -3.11 -m venv .venv
 - Candidate acquisition times are displayed in the local timezone resolved from
   the AOI centre. If timezone lookup is unavailable, the app falls back to an
   approximate UTC offset from longitude.
+- Same-time Planet scenes are collapsed before review: if multiple scenes share
+  the same UTC acquisition minute, only the scene with the highest AOI coverage
+  is shown. Lower cloud cover is used as the tie-breaker.
 - Tide prediction is sourced from `tide/Tide_predictions.py`.
 - `CSIRO_tidal_const_v12.nc` is intentionally ignored by git because it is a
   large local model file.
