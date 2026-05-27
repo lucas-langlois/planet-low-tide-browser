@@ -16,6 +16,9 @@ exporting kept image IDs for QGIS or Planet API ordering.
 On Windows, the easiest path is to double-click
 `Launch_Planet_Low_Tide_Browser.bat`. The launcher creates a local `.venv`
 environment on first run, installs the required packages, then starts the app.
+If a shared conda environment has already been prepared at
+`L:\RES_Library\Conda_env\myenv`, use
+`Launch_Planet_Low_Tide_Browser_Fast.bat` for faster startup.
 
 ## Important Runtime Requirement
 
