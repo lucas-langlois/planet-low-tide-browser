@@ -14,6 +14,7 @@ import webbrowser
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from urllib.parse import urljoin
 from zipfile import ZipFile
 
 import pandas as pd
@@ -30,6 +31,7 @@ LEAFLET_ASSETS = ROOT_DIR / "assets"
 
 ITEM_TYPE = "PSScene"
 PRODUCT_BUNDLE = "visual"
+PLANET_DATA_BASE_URL = "https://api.planet.com/data/v1"
 DEFAULT_TIMEZONE = "Australia/Brisbane"
 
 app = Flask(__name__)
@@ -102,22 +104,6 @@ def planet_client_from_key(api_key: str, read_timeout_secs: float | None = None)
     return Planet(session=Session(auth=Auth.from_key(key), read_timeout_secs=read_timeout_secs))
 
 
-def validate_planet_key(api_key: str) -> None:
-    _Auth, _Planet, _Session, data_filter, _build_request, _clip_tool, _product = import_planet_sdk()
-    pl = planet_client_from_key(api_key, read_timeout_secs=12)
-    probe_filter = data_filter.and_filter(
-        [
-            data_filter.date_range_filter(
-                "acquired",
-                gte=datetime(2024, 1, 1, tzinfo=timezone.utc),
-                lte=datetime(2024, 1, 2, tzinfo=timezone.utc),
-            )
-        ]
-    )
-    for _item in pl.data.search(item_types=[ITEM_TYPE], search_filter=probe_filter, limit=1):
-        break
-
-
 def user_facing_error(exc: Exception) -> str:
     text = str(exc)
     try:
@@ -127,6 +113,44 @@ def user_facing_error(exc: Exception) -> str:
     except Exception:
         pass
     return text
+
+
+def raise_for_planet_response(response: requests.Response) -> None:
+    if response.ok:
+        return
+    try:
+        payload = response.json()
+    except Exception:
+        payload = None
+    if isinstance(payload, dict):
+        message = payload.get("message") or payload.get("error")
+        if message:
+            raise RuntimeError(str(message))
+    raise RuntimeError(f"Planet API returned HTTP {response.status_code}.")
+
+
+def validate_planet_key(api_key: str) -> None:
+    api_key = normalise_api_key(api_key)
+    if not api_key:
+        raise ValueError("Planet API key is required.")
+    response = requests.post(
+        f"{PLANET_DATA_BASE_URL}/quick-search",
+        json={
+            "item_types": [ITEM_TYPE],
+            "filter": {
+                "type": "DateRangeFilter",
+                "field_name": "acquired",
+                "config": {
+                    "gte": "2024-01-01T00:00:00+00:00",
+                    "lte": "2024-01-02T00:00:00+00:00",
+                },
+            },
+        },
+        params={"_page_size": 1},
+        auth=HTTPBasicAuth(api_key, ""),
+        timeout=12,
+    )
+    raise_for_planet_response(response)
 
 
 def import_tide_predictions():
@@ -405,7 +429,6 @@ def search_planet(
 ) -> list[dict[str, Any]]:
     _Auth, _Planet, _Session, data_filter, _build_request, _clip_tool, _product = import_planet_sdk()
     api_key = normalise_api_key(api_key)
-    pl = planet_client_from_key(api_key)
 
     start_dt = datetime.fromisoformat(start_date).replace(tzinfo=timezone.utc)
     end_dt = datetime.fromisoformat(end_date).replace(hour=23, minute=59, second=59, tzinfo=timezone.utc)
@@ -418,14 +441,38 @@ def search_planet(
         ]
     )
 
-    raw_results = pl.data.search(item_types=[ITEM_TYPE], search_filter=combined_filter, limit=int(max_results))
     items: list[dict[str, Any]] = []
-    for item in raw_results:
-        normalised = normalise_item(item, aoi)
-        coverage = normalised.get("aoi_coverage_percent")
-        if coverage is not None and coverage < float(min_aoi_coverage):
-            continue
-        items.append(normalised)
+    next_url: str | None = f"{PLANET_DATA_BASE_URL}/quick-search"
+    payload = {"item_types": [ITEM_TYPE], "filter": combined_filter}
+    params: dict[str, Any] | None = {"_page_size": min(max(int(max_results), 1), 250), "_sort": "acquired asc"}
+
+    while next_url and len(items) < int(max_results):
+        if payload is None:
+            response = requests.get(next_url, auth=HTTPBasicAuth(api_key, ""), timeout=60)
+        else:
+            response = requests.post(
+                next_url,
+                json=payload,
+                params=params,
+                auth=HTTPBasicAuth(api_key, ""),
+                timeout=60,
+            )
+        raise_for_planet_response(response)
+        body = response.json()
+        for item in body.get("features", []):
+            normalised = normalise_item(item, aoi)
+            coverage = normalised.get("aoi_coverage_percent")
+            if coverage is not None and coverage < float(min_aoi_coverage):
+                continue
+            items.append(normalised)
+            if len(items) >= int(max_results):
+                break
+        links = body.get("_links") or {}
+        next_url = links.get("_next")
+        if next_url:
+            next_url = urljoin(f"{PLANET_DATA_BASE_URL}/", next_url)
+        payload = None
+        params = None
     return items
 
 
@@ -591,16 +638,23 @@ def make_csv(items: list[dict[str, Any]], statuses: dict[str, str]) -> str:
 
 
 def order_items(api_key: str, item_ids: list[str], aoi: dict[str, Any], clip_to_aoi: bool) -> dict[str, Any]:
-    _Auth, _Planet, _Session, _data_filter, build_request, clip_tool, product = import_planet_sdk()
+    _Auth, _Planet, _Session, _data_filter, _build_request, clip_tool, _product = import_planet_sdk()
     api_key = normalise_api_key(api_key)
     pl = planet_client_from_key(api_key)
     tools = [clip_tool(aoi)] if clip_to_aoi else []
     order_name = f"planet_browser_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-    order_request = build_request(
-        name=order_name,
-        products=[product(item_ids=item_ids, product_bundle=PRODUCT_BUNDLE, item_type=ITEM_TYPE)],
-        tools=tools or None,
-    )
+    order_request = {
+        "name": order_name,
+        "products": [
+            {
+                "item_ids": item_ids,
+                "item_type": ITEM_TYPE,
+                "product_bundle": PRODUCT_BUNDLE,
+            }
+        ],
+    }
+    if tools:
+        order_request["tools"] = tools
     order = pl.orders.create_order(order_request)
     order_id = order.get("id")
     if not order_id:
