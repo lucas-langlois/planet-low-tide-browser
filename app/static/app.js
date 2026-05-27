@@ -536,13 +536,13 @@ async function orderItems(itemIds) {
   }
   $("submitOrder").disabled = true;
   log(`Creating Planet order "${options.order_name}" for ${itemIds.length} item(s). This can take several minutes.`);
+  closeOrderModal();
   try {
     const result = await postJson("/api/order", {
       item_ids: itemIds,
       api_key: $("apiKey").value,
       ...options
     });
-    closeOrderModal();
     if (result.state === "success") {
       const lines = (result.results || []).map((entry) => `${entry.name || "download"}: ${entry.location || ""}`);
       log(`Order ${result.order_id} complete.\n${lines.join("\n")}`);
