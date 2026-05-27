@@ -84,7 +84,20 @@ function switchBasemap(layerName) {
   });
 }
 
-function setAoi(aoi) {
+function setAoiSummary(summary) {
+  if (!summary) return;
+  $("aoiSummary").classList.remove("hidden");
+  $("aoiSummaryName").textContent = summary.name || "AOI";
+  $("aoiSummaryArea").textContent = `${summary.area_km2 ?? 0} km²`;
+}
+
+function clearAoiSummary() {
+  $("aoiSummary").classList.add("hidden");
+  $("aoiSummaryName").textContent = "Not set";
+  $("aoiSummaryArea").textContent = "0 km²";
+}
+
+function setAoi(aoi, summary = null) {
   currentAoi = aoi;
   if (aoiLayer) map.removeLayer(aoiLayer);
   if (drawLayer) drawLayer.clearLayers();
@@ -92,6 +105,7 @@ function setAoi(aoi) {
     style: { color: "#f05a28", weight: 3, fillOpacity: 0.12 }
   }).addTo(map);
   map.fitBounds(aoiLayer.getBounds(), { padding: [30, 30] });
+  setAoiSummary(summary);
 }
 
 function updatePlanetOverlay() {
@@ -239,7 +253,7 @@ async function createSquareAoi() {
     lon: $("centerLon").value,
     area_km2: $("areaKm2").value
   });
-  setAoi(data.aoi);
+  setAoi(data.aoi, data.summary);
   log("Square AOI saved.");
 }
 
@@ -254,7 +268,7 @@ async function uploadAoi() {
   const response = await fetch("/api/aoi/upload", { method: "POST", body: form });
   const data = await response.json();
   if (!response.ok) throw new Error(data.error || "AOI upload failed.");
-  setAoi(data.aoi);
+  setAoi(data.aoi, data.summary);
   log("AOI uploaded.");
 }
 
@@ -266,7 +280,7 @@ async function saveDrawnAoi() {
   drawing = false;
   map.doubleClickZoom.enable();
   const data = await postJson("/api/aoi/drawn", { aoi: currentAoi });
-  setAoi(data.aoi);
+  setAoi(data.aoi, data.summary);
   log("Drawn AOI saved.");
 }
 
@@ -565,6 +579,7 @@ function bindEvents() {
     currentAoi = null;
     if (aoiLayer) map.removeLayer(aoiLayer);
     drawLayer.clearLayers();
+    clearAoiSummary();
     log("AOI cleared.");
   });
   $("saveDrawnAoi").addEventListener("click", () => saveDrawnAoi().catch((error) => log(error.message)));

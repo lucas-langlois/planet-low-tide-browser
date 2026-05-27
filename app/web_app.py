@@ -268,6 +268,15 @@ def aoi_area_km2(aoi: dict[str, Any]) -> float:
         return 0.0
 
 
+def aoi_summary(aoi: dict[str, Any], name: str) -> dict[str, Any]:
+    area = aoi_area_km2(aoi)
+    return {
+        "name": name or "AOI",
+        "area_km2": round(area),
+        "area_km2_precise": round(area, 3),
+    }
+
+
 def parse_uploaded_aoi(path: Path) -> dict[str, Any]:
     suffix = path.suffix.lower()
     if suffix in (".geojson", ".json"):
@@ -939,7 +948,7 @@ def api_square_aoi():
     state = get_state()
     state["aoi"] = aoi
     state["aoi_name"] = "center square"
-    return jsonify({"aoi": aoi})
+    return jsonify({"aoi": aoi, "summary": aoi_summary(aoi, state["aoi_name"])})
 
 
 @app.post("/api/aoi/upload")
@@ -958,7 +967,7 @@ def api_upload_aoi():
     state = get_state()
     state["aoi"] = aoi
     state["aoi_name"] = uploaded.filename
-    return jsonify({"aoi": aoi})
+    return jsonify({"aoi": aoi, "summary": aoi_summary(aoi, state["aoi_name"])})
 
 
 @app.post("/api/aoi/drawn")
@@ -971,7 +980,7 @@ def api_drawn_aoi():
     state = get_state()
     state["aoi"] = polygons_to_geojson(polygons)
     state["aoi_name"] = "drawn polygon"
-    return jsonify({"aoi": state["aoi"]})
+    return jsonify({"aoi": state["aoi"], "summary": aoi_summary(state["aoi"], state["aoi_name"])})
 
 
 @app.post("/api/search")

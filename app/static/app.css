@@ -238,6 +238,33 @@ button.primary-action {
   margin-top: 10px;
 }
 
+.aoi-summary {
+  margin-top: 12px;
+  padding: 10px;
+  display: grid;
+  gap: 3px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #f7f9fb;
+}
+
+.aoi-summary span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.aoi-summary strong {
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.aoi-summary small {
+  color: var(--blue);
+  font-size: 13px;
+  font-weight: 700;
+}
+
 .hidden {
   display: none !important;
 }
