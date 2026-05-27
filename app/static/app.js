@@ -218,7 +218,7 @@ async function queryPlanet() {
     renderResults();
     updatePreview();
     $("resultSummary").textContent = `${results.length} candidates. Tide method: ${data.tide.method}, faces: ${data.tide.n_faces}.`;
-    log(`Search complete: ${results.length} candidates.`);
+    log(`Search complete: ${results.length} candidates. Planet auth: ${data.key_source} ${data.masked_api_key}.`);
   } catch (error) {
     $("resultSummary").textContent = "Search failed.";
     log(error.message);

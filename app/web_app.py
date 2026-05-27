@@ -58,7 +58,7 @@ def load_default_api_key() -> str:
     for key_name in ("PL_API_KEY", "PLANET_API_KEY"):
         value = os.environ.get(key_name)
         if value:
-            return value.strip()
+            return normalise_api_key(value)
 
     config_path = ROOT_DIR / "config.py"
     if config_path.exists():
@@ -66,20 +66,40 @@ def load_default_api_key() -> str:
         exec(config_path.read_text(encoding="utf-8"), namespace)
         value = namespace.get("PLANET_API_KEY")
         if value and value != "your_api_key_here":
-            return str(value).strip()
+            return normalise_api_key(str(value))
     return ""
 
 
 def import_planet_sdk():
     try:
-        from planet import Planet, data_filter
+        from planet import Auth, Planet, Session, data_filter
         from planet.order_request import build_request, clip_tool, product
     except Exception as exc:
         raise RuntimeError(
             "Planet SDK is not installed in this Python environment. "
-            "Create/activate the local conda environment first."
+            "Create/activate the local .venv first."
         ) from exc
-    return Planet, data_filter, build_request, clip_tool, product
+    return Auth, Planet, Session, data_filter, build_request, clip_tool, product
+
+
+def normalise_api_key(api_key: str) -> str:
+    return str(api_key or "").strip().strip("\"'")
+
+
+def mask_api_key(api_key: str) -> str:
+    key = normalise_api_key(api_key)
+    if len(key) <= 12:
+        return "***" if key else ""
+    return f"{key[:8]}...{key[-4:]}"
+
+
+def planet_client_from_key(api_key: str):
+    Auth, Planet, Session, _data_filter, _build_request, _clip_tool, _product = import_planet_sdk()
+    key = normalise_api_key(api_key)
+    if not key:
+        raise ValueError("Planet API key is required.")
+    os.environ["PL_API_KEY"] = key
+    return Planet(session=Session(auth=Auth.from_key(key)))
 
 
 def import_tide_predictions():
@@ -356,9 +376,9 @@ def search_planet(
     min_aoi_coverage: float,
     max_results: int,
 ) -> list[dict[str, Any]]:
-    Planet, data_filter, _build_request, _clip_tool, _product = import_planet_sdk()
-    os.environ["PL_API_KEY"] = api_key
-    pl = Planet()
+    _Auth, _Planet, _Session, data_filter, _build_request, _clip_tool, _product = import_planet_sdk()
+    api_key = normalise_api_key(api_key)
+    pl = planet_client_from_key(api_key)
 
     start_dt = datetime.fromisoformat(start_date).replace(tzinfo=timezone.utc)
     end_dt = datetime.fromisoformat(end_date).replace(hour=23, minute=59, second=59, tzinfo=timezone.utc)
@@ -463,9 +483,9 @@ def make_csv(items: list[dict[str, Any]], statuses: dict[str, str]) -> str:
 
 
 def order_items(api_key: str, item_ids: list[str], aoi: dict[str, Any], clip_to_aoi: bool) -> dict[str, Any]:
-    Planet, _data_filter, build_request, clip_tool, product = import_planet_sdk()
-    os.environ["PL_API_KEY"] = api_key
-    pl = Planet()
+    _Auth, _Planet, _Session, _data_filter, build_request, clip_tool, product = import_planet_sdk()
+    api_key = normalise_api_key(api_key)
+    pl = planet_client_from_key(api_key)
     tools = [clip_tool(aoi)] if clip_to_aoi else []
     order_name = f"planet_browser_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
     order_request = build_request(
@@ -506,7 +526,7 @@ def config():
     return jsonify(
         {
             "has_api_key": bool(key),
-            "masked_api_key": f"{key[:8]}...{key[-4:]}" if key else "",
+            "masked_api_key": mask_api_key(key),
             "model_exists": MODEL_PATH.exists(),
             "model_path": str(MODEL_PATH),
             "item_type": ITEM_TYPE,
@@ -559,7 +579,10 @@ def api_drawn_aoi():
 @app.post("/api/search")
 def api_search():
     payload = request.get_json(force=True)
-    api_key = (payload.get("api_key") or load_default_api_key()).strip()
+    submitted_key = normalise_api_key(payload.get("api_key"))
+    default_key = load_default_api_key()
+    api_key = submitted_key or default_key
+    key_source = "typed key" if submitted_key else "configured key"
     if not api_key:
         return jsonify({"error": "Planet API key is required."}), 400
 
@@ -581,14 +604,14 @@ def api_search():
         if payload.get("predict_tides", True):
             items, tide_info = predict_tides_for_items(items, aoi)
     except Exception as exc:
-        return jsonify({"error": str(exc)}), 500
+        return jsonify({"error": f"{str(exc)}\n\nKey source: {key_source} ({mask_api_key(api_key)})"}), 500
 
     state = get_state()
     state["api_key"] = api_key
     state["aoi"] = aoi
     state["items"] = items
     state["statuses"] = {item["id"]: "pending" for item in items}
-    return jsonify({"items": items, "tide": tide_info})
+    return jsonify({"items": items, "tide": tide_info, "key_source": key_source, "masked_api_key": mask_api_key(api_key)})
 
 
 @app.post("/api/status")
@@ -663,7 +686,7 @@ def export_kept_geojson():
 def api_order():
     payload = request.get_json(force=True)
     state = get_state()
-    api_key = state.get("api_key") or (payload.get("api_key") or load_default_api_key()).strip()
+    api_key = normalise_api_key(state.get("api_key")) or normalise_api_key(payload.get("api_key")) or load_default_api_key()
     if not api_key:
         return jsonify({"error": "Planet API key is required."}), 400
     item_ids = payload.get("item_ids") or []
