@@ -50,14 +50,14 @@ ORDER_ASSET_OPTIONS = {
         "product_bundle": "analytic_sr_udm2",
         "bands": 4,
         "bytes_per_sample": 2,
-        "description": "Analytic surface reflectance with UDM2.",
+        "description": "4-band surface reflectance bundle with UDM2.",
     },
     "sr_8b": {
         "label": "Surface reflectance 8-band",
         "product_bundle": "analytic_8b_sr_udm2",
         "bands": 8,
         "bytes_per_sample": 2,
-        "description": "Eight-band analytic surface reflectance with UDM2.",
+        "description": "8-band surface reflectance bundle with UDM2.",
     },
 }
 

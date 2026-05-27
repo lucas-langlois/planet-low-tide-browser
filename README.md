@@ -70,6 +70,12 @@ The order panel is modelled on Planet Explorer's basic order flow:
 5. Choose tools: clip to AOI, composite, and/or harmonize to Sentinel-2.
 6. Review the estimate before clicking `Place order`.
 
+The PlanetScope scene asset choices use these Orders API bundles:
+
+- `visual`: RGB visual imagery.
+- `analytic_sr_udm2`: 4-band surface reflectance with UDM2.
+- `analytic_8b_sr_udm2`: 8-band surface reflectance with UDM2.
+
 The estimate reports item count, expected output image count, AOI area,
 AOI-intersection area, and processed-area estimate. The app also compares the
 processed-area estimate against the standard 3,000 km²/month education-account
