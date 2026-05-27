@@ -19,6 +19,9 @@ environment on first run, installs the required packages, then starts the app.
 If a shared conda environment has already been prepared at
 `L:\RES_Library\Conda_env\myenv`, use
 `Launch_Planet_Low_Tide_Browser_Fast.bat` for faster startup.
+For daily use without a terminal window, double-click
+`Launch_Planet_Low_Tide_Browser_Hidden.vbs`; startup messages are written to
+`logs\hidden_launcher.log`.
 
 ## Important Runtime Requirement
 
