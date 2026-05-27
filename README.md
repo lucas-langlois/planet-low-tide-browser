@@ -10,13 +10,22 @@ exporting kept image IDs for QGIS or Planet API ordering.
 2. Optional: copy `config.example.py` to `config.py` and add your Planet API key.
 3. Double-click `Launch_Planet_Low_Tide_Browser.bat`.
 
-The launcher creates a local `.conda` environment on first run, then starts the
+The launcher creates a local `.venv` environment on first run, then starts the
 app at <http://127.0.0.1:5050>.
 
 ## Environment
 
-Planet MCP requires Python 3.11 or higher, so the app environment uses Python
-3.11. The environment installs:
+Planet MCP requires Python 3.11 or higher. Install Python 3.11 side-by-side with
+any existing Python versions and run this app with the Windows Python launcher:
+
+```cmd
+py -3.11 --version
+```
+
+It is fine if `python --version` points to another Python version. The launcher
+uses `py -3.11` explicitly so existing Python 3.10 workflows are not changed.
+
+The local `.venv` installs:
 
 - `planet` for Planet Data and Orders API access
 - `planet-mcp` for agent/tool integration
@@ -26,8 +35,10 @@ Planet MCP requires Python 3.11 or higher, so the app environment uses Python
 Manual setup:
 
 ```powershell
-conda --no-plugins env create --prefix .conda --file environment.yml
-.\.conda\python.exe app\web_app.py
+py -3.11 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install --upgrade pip
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe app\web_app.py
 ```
 
 ## Notes

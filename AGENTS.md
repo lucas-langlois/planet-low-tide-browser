@@ -9,7 +9,8 @@ support composite creation.
 
 The app should run as a simple local Python web UI on a shared VM. Beginner
 users should be able to click a launcher file and open the app without using
-Streamlit.
+Streamlit. Runtime setup should use a project-local `.venv` created with
+`py -3.11`; do not rely on the machine default `python` command.
 
 ## Workflow
 
