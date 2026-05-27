@@ -6,7 +6,7 @@ exporting kept image IDs for QGIS or Planet API ordering.
 
 ## Quick Start
 
-1. Install Python 3.11 or newer.
+1. Install Python 3.10 or newer.
 2. Clone or download this repository.
 3. Put `CSIRO_tidal_const_v12.nc` in the app's `tide/` folder.
 4. Create a local virtual environment and install the packages in
@@ -28,19 +28,20 @@ This tool will not run tide predictions unless the CSIRO model file is present:
 
 ## Environment
 
-Planet MCP requires Python 3.11 or higher. Check your available Python version:
+This app requires Python 3.10 or higher. Check your available Python version:
 
 ```cmd
 python --version
 ```
 
-On Windows, the Python launcher can target Python 3.11 directly:
+On Windows, the Python launcher can target a specific Python version directly:
 
 ```cmd
 py -3.11 --version
+py -3.10 --version
 ```
 
-If Python 3.11 is not installed, install it from
+If Python 3.10 or newer is not installed, install it from
 <https://www.python.org/downloads/>. On Windows, this `winget` command is also
 an option:
 
@@ -51,7 +52,6 @@ winget install -e --id Python.Python.3.11 --scope user
 The local virtual environment installs:
 
 - `planet` for Planet Data and Orders API access
-- `planet-mcp` for agent/tool integration
 - Flask for the local web UI
 - `timezonefinder` for converting Planet UTC acquisition times to AOI-local time
 - raster/xarray/UTide dependencies required by `tide/Tide_predictions.py`
@@ -65,6 +65,8 @@ py -3.11 -m venv .venv
 .\.venv\Scripts\python.exe app\web_app.py
 ```
 
+Use `py -3.10` instead of `py -3.11` if Python 3.10 is the available version.
+
 macOS/Linux setup:
 
 ```bash
@@ -73,6 +75,9 @@ python3.11 -m venv .venv
 ./.venv/bin/python -m pip install -r requirements.txt
 ./.venv/bin/python app/web_app.py
 ```
+
+Use `python3.10` instead of `python3.11` if Python 3.10 is the available
+version.
 
 Do not commit `.venv`, `.conda`, `Planet_download`, or the CSIRO `.nc` model
 file. They are local runtime files and are ignored by git.

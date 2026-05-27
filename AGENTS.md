@@ -10,7 +10,8 @@ support composite creation.
 The app should run as a simple local Python web UI on a shared VM. Beginner
 users should be able to click a launcher file and open the app without using
 Streamlit. Runtime setup should use a project-local `.venv` created with
-`py -3.11`; do not rely on the machine default `python` command.
+Python 3.10 or newer. Prefer `py -3.11` or `py -3.10` on Windows rather than
+relying on the machine default `python` command.
 
 ## Workflow
 
@@ -27,9 +28,12 @@ Streamlit. Runtime setup should use a project-local `.venv` created with
 
 ## Tools
 
-- Install Planet MCP: [planetlabs/planet-mcp](https://github.com/planetlabs/planet-mcp)
+- For agent/development work only, install Planet MCP:
+  [planetlabs/planet-mcp](https://github.com/planetlabs/planet-mcp)
   - Requires Python 3.11 or higher.
   - Install with `pip install planet-mcp`.
+- Do not include Planet MCP in the runtime app requirements unless the app
+  starts calling it directly.
 - Follow the Planet SDK for Python documentation:
   <https://planet-sdk-for-python.readthedocs.io/en/stable/>
 - Use the Planet Python library for Data API searches and Orders API downloads.
