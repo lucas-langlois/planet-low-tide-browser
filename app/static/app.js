@@ -1,6 +1,8 @@
 let map;
 let aoiLayer;
 let drawLayer;
+let satelliteLayer;
+let streetLayer;
 let drawing = false;
 let drawPoints = [];
 let currentAoi = null;
@@ -18,25 +20,18 @@ function log(message) {
 function initMap() {
   map = L.map("map", { preferCanvas: true }).setView([-19.183638, 146.682512], 10);
 
-  const satelliteLayer = L.tileLayer(
+  satelliteLayer = L.tileLayer(
     "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
     {
       maxZoom: 19,
       attribution: "Tiles &copy; Esri"
     }
   ).addTo(map);
-  const streetLayer = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+  streetLayer = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
     maxZoom: 19,
     attribution: "&copy; OpenStreetMap"
   });
-  L.control.layers(
-    {
-      "Satellite": satelliteLayer,
-      "Street map": streetLayer
-    },
-    {},
-    { position: "topright" }
-  ).addTo(map);
+  addBasemapControl();
 
   drawLayer = L.layerGroup().addTo(map);
 
@@ -51,6 +46,39 @@ function initMap() {
   map.on("dblclick", (event) => {
     event.originalEvent.preventDefault();
     if (drawing) saveDrawnAoi();
+  });
+}
+
+function addBasemapControl() {
+  const BasemapControl = L.Control.extend({
+    options: { position: "topright" },
+    onAdd: () => {
+      const container = L.DomUtil.create("div", "basemap-control");
+      container.innerHTML = `
+        <button type="button" class="basemap-btn active" data-layer="satellite">Satellite</button>
+        <button type="button" class="basemap-btn" data-layer="street">Street</button>
+      `;
+      L.DomEvent.disableClickPropagation(container);
+      L.DomEvent.disableScrollPropagation(container);
+      container.querySelectorAll("button").forEach((button) => {
+        button.addEventListener("click", () => switchBasemap(button.dataset.layer));
+      });
+      return container;
+    }
+  });
+  map.addControl(new BasemapControl());
+}
+
+function switchBasemap(layerName) {
+  if (layerName === "street") {
+    if (map.hasLayer(satelliteLayer)) map.removeLayer(satelliteLayer);
+    if (!map.hasLayer(streetLayer)) streetLayer.addTo(map);
+  } else {
+    if (map.hasLayer(streetLayer)) map.removeLayer(streetLayer);
+    if (!map.hasLayer(satelliteLayer)) satelliteLayer.addTo(map);
+  }
+  document.querySelectorAll(".basemap-btn").forEach((button) => {
+    button.classList.toggle("active", button.dataset.layer === layerName);
   });
 }
 

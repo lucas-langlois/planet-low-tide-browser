@@ -188,6 +188,35 @@ button.primary {
   background: #d8e1e8;
 }
 
+.basemap-control {
+  display: flex;
+  overflow: hidden;
+  border: 1px solid rgba(23, 33, 43, 0.28);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 2px 8px rgba(23, 33, 43, 0.18);
+}
+
+.basemap-control .basemap-btn {
+  min-height: 30px;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.basemap-control .basemap-btn + .basemap-btn {
+  border-left: 1px solid var(--line);
+}
+
+.basemap-control .basemap-btn.active {
+  background: var(--blue);
+  color: #fff;
+}
+
 .review-grid {
   min-height: 0;
   display: grid;
