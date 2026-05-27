@@ -565,8 +565,22 @@ button.reject {
 .orders-actions {
   padding: 10px 16px;
   display: flex;
-  justify-content: flex-end;
+  align-items: end;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
   border-bottom: 1px solid var(--line);
+}
+
+.download-folder-field {
+  flex: 1 1 420px;
+  max-width: 720px;
+}
+
+.path-picker {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) auto;
+  gap: 8px;
 }
 
 .orders-list {

@@ -1025,7 +1025,16 @@ def unique_path(folder: Path, filename: str) -> Path:
     raise RuntimeError(f"Could not make a unique filename for {filename}.")
 
 
-def download_order_files(api_key: str, order_id: str) -> dict[str, Any]:
+def resolve_download_root(download_dir: str | None = None) -> Path:
+    if not download_dir or not download_dir.strip():
+        return PLANET_DOWNLOAD_DIR
+    path = Path(download_dir.strip()).expanduser()
+    if not path.is_absolute():
+        path = ROOT_DIR / path
+    return path
+
+
+def download_order_files(api_key: str, order_id: str, download_dir: str | None = None) -> dict[str, Any]:
     order = fetch_order_detail(api_key, order_id)
     state = str(order.get("state", "")).lower()
     if state != "success":
@@ -1035,7 +1044,7 @@ def download_order_files(api_key: str, order_id: str) -> dict[str, Any]:
         raise ValueError("Planet has not returned download URLs for this order yet. Refresh orders in a moment.")
 
     order_name = safe_file_part(str(order.get("name") or order_id), order_id)
-    folder = PLANET_DOWNLOAD_DIR / order_name
+    folder = resolve_download_root(download_dir) / order_name
     folder.mkdir(parents=True, exist_ok=True)
 
     saved_files = []
@@ -1085,6 +1094,7 @@ def config():
             "model_exists": MODEL_PATH.exists(),
             "model_path": str(MODEL_PATH),
             "item_type": ITEM_TYPE,
+            "download_dir": str(PLANET_DOWNLOAD_DIR),
         }
     )
 
@@ -1410,6 +1420,32 @@ def api_orders_list():
     return jsonify({"orders": orders})
 
 
+@app.post("/api/download-folder/select")
+def api_select_download_folder():
+    payload = request.get_json(force=True)
+    initial_dir = resolve_download_root(str(payload.get("download_dir") or ""))
+    try:
+        import tkinter as tk
+        from tkinter import filedialog
+
+        root = tk.Tk()
+        root.withdraw()
+        root.attributes("-topmost", True)
+        folder = filedialog.askdirectory(
+            initialdir=str(initial_dir if initial_dir.exists() else PLANET_DOWNLOAD_DIR),
+            title="Select Planet download folder",
+            mustexist=False,
+        )
+        root.destroy()
+    except Exception as exc:
+        return jsonify({"error": f"Could not open folder picker: {exc}"}), 500
+    if not folder:
+        return jsonify({"cancelled": True, "folder": ""})
+    state = get_state()
+    state["download_dir"] = folder
+    return jsonify({"cancelled": False, "folder": folder})
+
+
 @app.post("/api/order/download")
 def api_order_download():
     payload = request.get_json(force=True)
@@ -1421,10 +1457,13 @@ def api_order_download():
     if not api_key:
         return jsonify({"error": "Planet API key is required."}), 400
     try:
-        result = download_order_files(api_key, order_id)
+        download_dir = str(payload.get("download_dir") or state.get("download_dir") or "")
+        result = download_order_files(api_key, order_id, download_dir)
     except Exception as exc:
         return jsonify({"error": str(exc)}), 500
     state["api_key"] = api_key
+    if payload.get("download_dir"):
+        state["download_dir"] = str(payload.get("download_dir"))
     return jsonify(result)
 
 

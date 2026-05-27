@@ -209,6 +209,9 @@ async function getJson(url) {
 async function loadConfig() {
   const response = await fetch("/api/config");
   const config = await response.json();
+  if ($("downloadFolder") && config.download_dir) {
+    $("downloadFolder").value = config.download_dir;
+  }
   $("runtimeStatus").textContent = config.model_exists
     ? `CSIRO model found. Item type: ${config.item_type}`
     : `CSIRO model missing: ${config.model_path}`;
@@ -585,11 +588,13 @@ async function downloadOrderFiles(orderId, button) {
   button.disabled = true;
   const originalText = button.textContent;
   button.textContent = "Downloading...";
-  log(`Downloading Planet order ${orderId} into Planet_download. This may take a while.`);
+  const downloadDir = $("downloadFolder").value.trim();
+  log(`Downloading Planet order ${orderId} into ${downloadDir || "Planet_download"}. This may take a while.`);
   try {
     const result = await postJson("/api/order/download", {
       order_id: orderId,
-      api_key: $("apiKey").value
+      api_key: $("apiKey").value,
+      download_dir: downloadDir
     });
     button.textContent = "Downloaded";
     log(`Downloaded ${result.file_count} file(s) to ${result.folder}.`);
@@ -597,6 +602,16 @@ async function downloadOrderFiles(orderId, button) {
     button.disabled = false;
     button.textContent = originalText;
     throw error;
+  }
+}
+
+async function browseDownloadFolder() {
+  const result = await postJson("/api/download-folder/select", {
+    download_dir: $("downloadFolder").value
+  });
+  if (!result.cancelled && result.folder) {
+    $("downloadFolder").value = result.folder;
+    log(`Download folder set to ${result.folder}.`);
   }
 }
 
@@ -708,6 +723,7 @@ function bindEvents() {
   $("refreshOrders").addEventListener("click", () => refreshOrdersList().catch((error) => {
     $("ordersList").textContent = error.message;
   }));
+  $("browseDownloadFolder").addEventListener("click", () => browseDownloadFolder().catch((error) => log(error.message)));
   $("ordersList").addEventListener("click", (event) => {
     const button = event.target.closest(".download-order");
     if (!button) return;
