@@ -6,13 +6,16 @@ exporting kept image IDs for QGIS or Planet API ordering.
 
 ## Quick Start
 
-1. Install Python 3.11 on the VM if it is not already available.
-2. Put `CSIRO_tidal_const_v12.nc` in the app's `tide/` folder.
-3. Optional: copy `config.example.py` to `config.py` and add your Planet API key.
-4. Double-click `Launch_Planet_Low_Tide_Browser.bat`.
+1. Install Python 3.11 or newer.
+2. Clone or download this repository.
+3. Put `CSIRO_tidal_const_v12.nc` in the app's `tide/` folder.
+4. Create a local virtual environment and install the packages in
+   `requirements.txt`.
+5. Start the app and open <http://127.0.0.1:5050>.
 
-The launcher creates a local `.venv` environment on first run, then starts the
-app at <http://127.0.0.1:5050>.
+On Windows, the easiest path is to double-click
+`Launch_Planet_Low_Tide_Browser.bat`. The launcher creates a local `.venv`
+environment on first run, installs the required packages, then starts the app.
 
 ## Important Runtime Requirement
 
@@ -25,24 +28,27 @@ This tool will not run tide predictions unless the CSIRO model file is present:
 
 ## Environment
 
-Planet MCP requires Python 3.11 or higher. On shared VMs, install Python 3.11
-side-by-side with any existing Python versions and run this app with the Windows
-Python launcher:
+Planet MCP requires Python 3.11 or higher. Check your available Python version:
+
+```cmd
+python --version
+```
+
+On Windows, the Python launcher can target Python 3.11 directly:
 
 ```cmd
 py -3.11 --version
 ```
 
-It is fine if `python --version` points to another Python version. The launcher
-uses `py -3.11` explicitly so existing Python 3.10 workflows are not changed.
-
-Recommended Windows install command, when `winget` is available:
+If Python 3.11 is not installed, install it from
+<https://www.python.org/downloads/>. On Windows, this `winget` command is also
+an option:
 
 ```cmd
 winget install -e --id Python.Python.3.11 --scope user
 ```
 
-The local `.venv` installs:
+The local virtual environment installs:
 
 - `planet` for Planet Data and Orders API access
 - `planet-mcp` for agent/tool integration
@@ -50,13 +56,22 @@ The local `.venv` installs:
 - `timezonefinder` for converting Planet UTC acquisition times to AOI-local time
 - raster/xarray/UTide dependencies required by `tide/Tide_predictions.py`
 
-Manual setup, if you do not use the launcher:
+Windows setup:
 
 ```powershell
 py -3.11 -m venv .venv
 .\.venv\Scripts\python.exe -m pip install --upgrade pip
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
 .\.venv\Scripts\python.exe app\web_app.py
+```
+
+macOS/Linux setup:
+
+```bash
+python3.11 -m venv .venv
+./.venv/bin/python -m pip install --upgrade pip
+./.venv/bin/python -m pip install -r requirements.txt
+./.venv/bin/python app/web_app.py
 ```
 
 Do not commit `.venv`, `.conda`, `Planet_download`, or the CSIRO `.nc` model
