@@ -105,6 +105,52 @@ input {
   background: #fff;
 }
 
+.api-status {
+  min-height: 28px;
+  margin-top: 8px;
+  padding: 6px 8px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #f7f9fb;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.api-status-icon {
+  width: 16px;
+  height: 16px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 999px;
+  font-size: 12px;
+  line-height: 1;
+}
+
+.api-status[data-state="checking"] {
+  border-color: #c7d6e2;
+  color: var(--blue);
+}
+
+.api-status[data-state="valid"] {
+  border-color: #a9d8bf;
+  background: #eefaf3;
+  color: var(--green);
+}
+
+.api-status[data-state="invalid"] {
+  border-color: #f3b5ad;
+  background: #fff1ef;
+  color: var(--red);
+}
+
+.api-status[data-state="idle"] {
+  display: none;
+}
+
 button,
 .button {
   min-height: 34px;

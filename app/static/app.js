@@ -10,6 +10,8 @@ let results = [];
 let statuses = {};
 let selectedId = null;
 let previewMode = "aoi";
+let apiValidationTimer = null;
+let apiValidationRequestId = 0;
 
 const $ = (id) => document.getElementById(id);
 
@@ -154,7 +156,44 @@ async function loadConfig() {
     : `CSIRO model missing: ${config.model_path}`;
   if (config.has_api_key) {
     $("apiHint").textContent = `Using configured API key ${config.masked_api_key} unless you paste another one.`;
+    setApiStatus("idle", "○", "Paste a key to validate it.");
   }
+}
+
+function setApiStatus(state, icon, text) {
+  const status = $("apiStatus");
+  status.dataset.state = state;
+  status.querySelector(".api-status-icon").textContent = icon;
+  status.querySelector(".api-status-text").textContent = text;
+}
+
+function scheduleApiValidation() {
+  const key = $("apiKey").value.trim();
+  apiValidationRequestId += 1;
+  const requestId = apiValidationRequestId;
+  clearTimeout(apiValidationTimer);
+
+  if (!key) {
+    setApiStatus("idle", "○", "Paste a key to validate it.");
+    return;
+  }
+
+  if (key.length < 16) {
+    setApiStatus("invalid", "!", "Key looks too short.");
+    return;
+  }
+
+  setApiStatus("checking", "…", "Checking Planet key...");
+  apiValidationTimer = setTimeout(async () => {
+    try {
+      const data = await postJson("/api/validate-key", { api_key: key });
+      if (requestId !== apiValidationRequestId) return;
+      setApiStatus("valid", "✓", `Valid and ready: ${data.masked_api_key}`);
+    } catch (error) {
+      if (requestId !== apiValidationRequestId) return;
+      setApiStatus("invalid", "!", error.message);
+    }
+  }, 600);
 }
 
 async function createSquareAoi() {
@@ -327,6 +366,8 @@ function bindEvents() {
   $("createSquareAoi").addEventListener("click", () => createSquareAoi().catch((error) => log(error.message)));
   $("uploadAoi").addEventListener("click", () => uploadAoi().catch((error) => log(error.message)));
   $("searchPlanet").addEventListener("click", queryPlanet);
+  $("apiKey").addEventListener("input", scheduleApiValidation);
+  $("apiKey").addEventListener("paste", () => setTimeout(scheduleApiValidation, 0));
   $("previewAoi").addEventListener("click", () => {
     previewMode = "aoi";
     updatePreview();

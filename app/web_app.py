@@ -93,13 +93,40 @@ def mask_api_key(api_key: str) -> str:
     return f"{key[:8]}...{key[-4:]}"
 
 
-def planet_client_from_key(api_key: str):
+def planet_client_from_key(api_key: str, read_timeout_secs: float | None = None):
     Auth, Planet, Session, _data_filter, _build_request, _clip_tool, _product = import_planet_sdk()
     key = normalise_api_key(api_key)
     if not key:
         raise ValueError("Planet API key is required.")
     os.environ["PL_API_KEY"] = key
-    return Planet(session=Session(auth=Auth.from_key(key)))
+    return Planet(session=Session(auth=Auth.from_key(key), read_timeout_secs=read_timeout_secs))
+
+
+def validate_planet_key(api_key: str) -> None:
+    _Auth, _Planet, _Session, data_filter, _build_request, _clip_tool, _product = import_planet_sdk()
+    pl = planet_client_from_key(api_key, read_timeout_secs=12)
+    probe_filter = data_filter.and_filter(
+        [
+            data_filter.date_range_filter(
+                "acquired",
+                gte=datetime(2024, 1, 1, tzinfo=timezone.utc),
+                lte=datetime(2024, 1, 2, tzinfo=timezone.utc),
+            )
+        ]
+    )
+    for _item in pl.data.search(item_types=[ITEM_TYPE], search_filter=probe_filter, limit=1):
+        break
+
+
+def user_facing_error(exc: Exception) -> str:
+    text = str(exc)
+    try:
+        parsed = json.loads(text)
+        if isinstance(parsed, dict) and parsed.get("message"):
+            return str(parsed["message"])
+    except Exception:
+        pass
+    return text
 
 
 def import_tide_predictions():
@@ -612,6 +639,21 @@ def api_search():
     state["items"] = items
     state["statuses"] = {item["id"]: "pending" for item in items}
     return jsonify({"items": items, "tide": tide_info, "key_source": key_source, "masked_api_key": mask_api_key(api_key)})
+
+
+@app.post("/api/validate-key")
+def api_validate_key():
+    payload = request.get_json(force=True)
+    api_key = normalise_api_key(payload.get("api_key"))
+    if not api_key:
+        return jsonify({"valid": False, "error": "Paste a Planet API key first."}), 400
+
+    try:
+        validate_planet_key(api_key)
+    except Exception as exc:
+        return jsonify({"valid": False, "error": user_facing_error(exc)}), 401
+
+    return jsonify({"valid": True, "masked_api_key": mask_api_key(api_key)})
 
 
 @app.post("/api/status")
