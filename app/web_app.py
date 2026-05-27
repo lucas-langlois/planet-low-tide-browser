@@ -803,6 +803,21 @@ def api_status():
     return jsonify({"ok": True, "statuses": state["statuses"]})
 
 
+@app.post("/api/status/bulk")
+def api_status_bulk():
+    payload = request.get_json(force=True)
+    item_ids = payload.get("item_ids") or []
+    status = payload.get("status")
+    if status not in ("pending", "keep", "reject"):
+        return jsonify({"error": "Unknown status."}), 400
+    state = get_state()
+    known_ids = {item["id"] for item in state["items"]}
+    for item_id in item_ids:
+        if item_id in known_ids:
+            state["statuses"][item_id] = status
+    return jsonify({"ok": True, "statuses": state["statuses"]})
+
+
 @app.get("/api/preview/<item_id>.png")
 def api_preview(item_id: str):
     state = get_state()

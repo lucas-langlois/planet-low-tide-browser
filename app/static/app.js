@@ -10,7 +10,6 @@ let currentAoi = null;
 let results = [];
 let statuses = {};
 let selectedId = null;
-let previewMode = "aoi";
 let apiValidationTimer = null;
 let apiValidationRequestId = 0;
 
@@ -105,7 +104,7 @@ function updatePlanetOverlay() {
   }
 
   if (!item || !showOverlay) {
-    $("mapOverlayLabel").textContent = item ? "Selected image hidden." : "Select a candidate to show its preview on the map.";
+    $("mapOverlayLabel").textContent = item ? "Selected image hidden." : "Select a candidate to show it on the map.";
     return;
   }
 
@@ -293,7 +292,6 @@ async function queryPlanet() {
     statuses = Object.fromEntries(results.map((item) => [item.id, "pending"]));
     selectedId = results.length ? results[0].id : null;
     renderResults();
-    updatePreview();
     updatePlanetOverlay();
     $("resultSummary").textContent = `${results.length} candidates. Tide method: ${data.tide.method}, faces: ${data.tide.n_faces}.`;
     log(`Search complete: ${results.length} candidates. Planet auth: ${data.key_source} ${data.masked_api_key}.`);
@@ -314,46 +312,65 @@ function renderResults() {
     row.classList.toggle("selected", item.id === selectedId);
     row.innerHTML = `
       <td>${index + 1}</td>
-      <td><span class="pill ${status}">${status}</span></td>
+      <td class="decision-cell">
+        <label class="keep-toggle">
+          <input type="checkbox" data-item-id="${item.id}" ${status === "keep" ? "checked" : ""}>
+          Keep
+        </label>
+        <span class="pill ${status}">${status}</span>
+      </td>
       <td class="item-id">${item.id}</td>
       <td>${(item.acquired || "").replace("T", " ").slice(0, 16)}</td>
       <td>${item.tide_height ?? ""}</td>
       <td>${item.cloud_cover ?? ""}</td>
       <td>${item.aoi_coverage_percent == null ? "" : item.aoi_coverage_percent.toFixed(1)}</td>
     `;
+    row.querySelector("input").addEventListener("click", (event) => event.stopPropagation());
+    row.querySelector("input").addEventListener("change", (event) => {
+      const nextStatus = event.target.checked ? "keep" : "pending";
+      setItemStatus(item.id, nextStatus).catch((error) => log(error.message));
+    });
     row.addEventListener("click", () => {
       selectedId = item.id;
       renderResults();
-      updatePreview();
       updatePlanetOverlay();
     });
     body.appendChild(row);
   });
+  updateDecisionSummary();
 }
 
 function selectedItem() {
   return results.find((item) => item.id === selectedId);
 }
 
-function updatePreview() {
-  const item = selectedItem();
-  if (!item) {
-    $("previewImage").style.display = "none";
-    $("selectedMeta").textContent = "Select a candidate.";
-    return;
-  }
-  $("selectedMeta").textContent = `${item.id} | tide ${item.tide_height ?? "NA"} m | cloud ${item.cloud_cover ?? "NA"}%`;
-  $("previewImage").src = `/api/preview/${encodeURIComponent(item.id)}.png?mode=${previewMode}&t=${Date.now()}`;
-  $("previewImage").style.display = "block";
+function updateDecisionSummary() {
+  const counts = { keep: 0, reject: 0, pending: 0 };
+  results.forEach((item) => {
+    counts[statuses[item.id] || "pending"] += 1;
+  });
+  $("decisionSummary").textContent = `${counts.keep} kept, ${counts.reject} rejected, ${counts.pending} pending.`;
 }
 
-async function markSelected(status) {
-  const item = selectedItem();
-  if (!item) return;
-  await postJson("/api/status", { item_id: item.id, status });
-  statuses[item.id] = status;
+async function setItemStatus(itemId, status) {
+  await postJson("/api/status", { item_id: itemId, status });
+  statuses[itemId] = status;
   renderResults();
-  log(`${item.id} marked ${status}.`);
+  if (itemId === selectedId) updatePlanetOverlay();
+  log(`${itemId} marked ${status}.`);
+}
+
+async function rejectUnkeptItems() {
+  const unkeptIds = results.filter((item) => (statuses[item.id] || "pending") !== "keep").map((item) => item.id);
+  if (!unkeptIds.length) {
+    log("No unkept items to reject.");
+    return;
+  }
+  const data = await postJson("/api/status/bulk", { item_ids: unkeptIds, status: "reject" });
+  statuses = data.statuses || statuses;
+  renderResults();
+  updatePlanetOverlay();
+  log(`${unkeptIds.length} unkept item(s) marked reject.`);
 }
 
 async function orderItems(itemIds) {
@@ -410,21 +427,7 @@ function bindEvents() {
   $("planetOpacity").addEventListener("input", setPlanetOverlayOpacity);
   $("apiKey").addEventListener("input", scheduleApiValidation);
   $("apiKey").addEventListener("paste", () => setTimeout(scheduleApiValidation, 0));
-  $("previewAoi").addEventListener("click", () => {
-    previewMode = "aoi";
-    updatePreview();
-  });
-  $("previewFull").addEventListener("click", () => {
-    previewMode = "full";
-    updatePreview();
-  });
-  $("keepSelected").addEventListener("click", () => markSelected("keep").catch((error) => log(error.message)));
-  $("rejectSelected").addEventListener("click", () => markSelected("reject").catch((error) => log(error.message)));
-  $("pendingSelected").addEventListener("click", () => markSelected("pending").catch((error) => log(error.message)));
-  $("orderSelected").addEventListener("click", () => {
-    const item = selectedItem();
-    orderItems(item ? [item.id] : []).catch((error) => log(error.message));
-  });
+  $("rejectUnkept").addEventListener("click", () => rejectUnkeptItems().catch((error) => log(error.message)));
   $("orderKept").addEventListener("click", () => {
     const keptIds = Object.entries(statuses).filter((entry) => entry[1] === "keep").map((entry) => entry[0]);
     orderItems(keptIds).catch((error) => log(error.message));
