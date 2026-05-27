@@ -3,6 +3,14 @@ setlocal
 cd /d "%~dp0"
 set PYTHONDONTWRITEBYTECODE=1
 set "PYTHON_CMD="
+set "VENV_DIR=.venv"
+
+echo Planet Low Tide Browser launcher
+echo.
+echo App folder:
+echo   %CD%
+echo.
+echo [1/5] Checking Python ...
 
 py -3.11 --version >nul 2>&1
 if not errorlevel 1 set "PYTHON_CMD=py -3.11"
@@ -29,6 +37,12 @@ if not defined PYTHON_CMD (
   exit /b 1
 )
 
+echo Using Python command:
+echo   %PYTHON_CMD%
+%PYTHON_CMD% --version
+echo.
+
+echo [2/5] Checking CSIRO tide model ...
 if not exist "tide\CSIRO_tidal_const_v12.nc" (
   echo CSIRO tide model file is missing.
   echo.
@@ -42,10 +56,18 @@ if not exist "tide\CSIRO_tidal_const_v12.nc" (
   pause
   exit /b 1
 )
+echo Found tide\CSIRO_tidal_const_v12.nc
+echo.
 
-if not exist ".venv\Scripts\python.exe" (
-  echo Creating local Python environment in .venv ...
-  %PYTHON_CMD% -m venv ".venv"
+if not exist "%VENV_DIR%\Scripts\python.exe" (
+  echo [3/5] Creating local Python environment in:
+  echo   %VENV_DIR%
+  echo.
+  echo This can take a few minutes on a shared or network drive.
+  echo If Python prints "Actual environment location may have moved", wait for
+  echo the next launcher message: "Installing app packages".
+  echo.
+  %PYTHON_CMD% -m venv "%VENV_DIR%"
   if errorlevel 1 (
     echo.
     echo Failed to create the Python virtual environment.
@@ -53,9 +75,12 @@ if not exist ".venv\Scripts\python.exe" (
     exit /b 1
   )
 
-  echo Installing app packages ...
-  ".venv\Scripts\python.exe" -m pip install --upgrade pip
-  ".venv\Scripts\python.exe" -m pip install -r requirements.txt
+  echo.
+  echo [4/5] Installing app packages ...
+  echo This is usually the slowest step on first run.
+  echo.
+  "%VENV_DIR%\Scripts\python.exe" -m pip install --upgrade pip
+  "%VENV_DIR%\Scripts\python.exe" -m pip install -r requirements.txt
   if errorlevel 1 (
     echo.
     echo Failed to install packages.
@@ -63,7 +88,16 @@ if not exist ".venv\Scripts\python.exe" (
     pause
     exit /b 1
   )
+) else (
+  echo [3/5] Existing local Python environment found:
+  echo   %VENV_DIR%
+  echo.
+  echo [4/5] Package install skipped. Delete .venv to rebuild it.
+  echo.
 )
 
-".venv\Scripts\python.exe" app\web_app.py
+echo [5/5] Starting app ...
+echo Open http://127.0.0.1:5050 if the browser does not open automatically.
+echo.
+"%VENV_DIR%\Scripts\python.exe" app\web_app.py
 if errorlevel 1 pause
