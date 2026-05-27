@@ -31,6 +31,10 @@ For daily use without a terminal window, double-click
 The repository includes a `Dockerfile`, `.gcloudignore`, and
 `deploy_cloud_run.ps1` for deploying the same app to Google Cloud Run.
 
+For people who only need to use the hosted app, see
+[`CLOUD_RUN_USER_GUIDE.md`](CLOUD_RUN_USER_GUIDE.md). Windows users can
+double-click `Open_Planet_Low_Tide_Browser_Cloud.bat` to open the cloud app.
+
 Current test deployment:
 
 - Project ID: `planet-low-tide-browser-jcu`
