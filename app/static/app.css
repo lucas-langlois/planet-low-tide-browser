@@ -604,15 +604,13 @@ button.reject {
   font-weight: 700;
 }
 
-.order-results {
+.order-download-row {
   margin-top: 8px;
-  display: grid;
-  gap: 4px;
-  font-size: 12px;
-}
-
-.order-results a {
-  overflow-wrap: anywhere;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
 .order-body {

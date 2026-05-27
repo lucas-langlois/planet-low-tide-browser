@@ -16,6 +16,7 @@ tide/CSIRO_tidal_const_v12.nc
 
 # Generated outputs
 downloads/
+Planet_download/
 orders/
 exports/
 logs/

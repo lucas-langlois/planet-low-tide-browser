@@ -561,21 +561,43 @@ async function orderItems(itemIds) {
 function orderResultLines(results) {
   return (results || []).map((entry) => {
     const name = entry.name || entry.id || "download";
-    const location = entry.location || entry.url || "";
-    return location ? `${name}: ${location}` : name;
+    const expires = entry.expires_at ? ` (expires ${entry.expires_at})` : "";
+    return `${name}${expires}`;
   });
 }
 
-function resultLinksHtml(results) {
-  const links = (results || [])
-    .map((entry) => {
-      const location = entry.location || entry.url || "";
-      if (!location) return "";
-      const name = entry.name || entry.id || "download";
-      return `<a href="${escapeHtml(location)}" target="_blank" rel="noreferrer">${escapeHtml(name)}</a>`;
-    })
-    .filter(Boolean);
-  return links.length ? `<div class="order-results">${links.join("")}</div>` : "";
+function orderDownloadHtml(order) {
+  if (String(order.state || "").toLowerCase() !== "success") {
+    return "";
+  }
+  const resultCount = (order.results || []).filter((entry) => entry.location || entry.url || entry.href).length;
+  const readyText = resultCount ? `${resultCount} file${resultCount === 1 ? "" : "s"} ready` : "Files ready";
+  return `
+    <div class="order-download-row">
+      <span class="hint">${escapeHtml(readyText)}</span>
+      <button class="download-order" data-order-id="${escapeHtml(order.order_id || "")}">Download files</button>
+    </div>
+  `;
+}
+
+async function downloadOrderFiles(orderId, button) {
+  if (!orderId) return;
+  button.disabled = true;
+  const originalText = button.textContent;
+  button.textContent = "Downloading...";
+  log(`Downloading Planet order ${orderId} into Planet_download. This may take a while.`);
+  try {
+    const result = await postJson("/api/order/download", {
+      order_id: orderId,
+      api_key: $("apiKey").value
+    });
+    button.textContent = "Downloaded";
+    log(`Downloaded ${result.file_count} file(s) to ${result.folder}.`);
+  } catch (error) {
+    button.disabled = false;
+    button.textContent = originalText;
+    throw error;
+  }
 }
 
 async function pollOrderStatus(orderId) {
@@ -595,7 +617,7 @@ async function pollOrderStatus(orderId) {
     }
     if (state === "success") {
       const lines = orderResultLines(status.results);
-      log(`Order ${orderId} complete.${lines.length ? `\n${lines.join("\n")}` : ""}`);
+      log(`Order ${orderId} complete. ${lines.length ? `${lines.length} file(s) ready. ` : ""}Use Show orders to download files.`);
       return;
     }
     if (["failed", "cancelled", "partial"].includes(state)) {
@@ -621,7 +643,7 @@ function renderOrders(orders) {
         </div>
         <span class="order-state">${escapeHtml(order.state || "unknown")}</span>
       </div>
-      ${resultLinksHtml(order.results)}
+      ${orderDownloadHtml(order)}
     </article>
   `).join("");
 }
@@ -686,6 +708,11 @@ function bindEvents() {
   $("refreshOrders").addEventListener("click", () => refreshOrdersList().catch((error) => {
     $("ordersList").textContent = error.message;
   }));
+  $("ordersList").addEventListener("click", (event) => {
+    const button = event.target.closest(".download-order");
+    if (!button) return;
+    downloadOrderFiles(button.dataset.orderId, button).catch((error) => log(error.message));
+  });
   $("rejectUnkept").addEventListener("click", () => rejectUnkeptItems().catch((error) => log(error.message)));
   $("orderKept").addEventListener("click", () => openOrderModal().catch((error) => log(error.message)));
   $("closeOrderModal").addEventListener("click", closeOrderModal);

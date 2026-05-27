@@ -6,6 +6,7 @@ import io
 import json
 import math
 import os
+import re
 import sys
 import tempfile
 import uuid
@@ -13,7 +14,7 @@ import webbrowser
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
-from urllib.parse import urljoin
+from urllib.parse import unquote, urljoin, urlparse
 from zoneinfo import ZoneInfo
 from zipfile import ZipFile
 
@@ -33,6 +34,7 @@ ITEM_TYPE = "PSScene"
 PRODUCT_BUNDLE = "visual"
 PLANET_DATA_BASE_URL = "https://api.planet.com/data/v1"
 PLANET_ORDERS_BASE_URL = "https://api.planet.com/compute/ops/orders/v2"
+PLANET_DOWNLOAD_DIR = ROOT_DIR / "Planet_download"
 DEFAULT_TIMEZONE = "Australia/Brisbane"
 EDUCATION_MONTHLY_QUOTA_KM2 = 3000.0
 ORDER_ASSET_OPTIONS = {
@@ -908,20 +910,56 @@ def submit_order(
 
 
 def get_order_status(api_key: str, order_id: str) -> dict[str, Any]:
+    status = fetch_order_detail(api_key, order_id)
+    return {
+        "order_id": order_id,
+        "state": status.get("state", "unknown"),
+        "results": order_download_results(status),
+        "error": status.get("error"),
+        "name": status.get("name"),
+    }
+
+
+def fetch_order_detail(api_key: str, order_id: str) -> dict[str, Any]:
     response = requests.get(
         f"{PLANET_ORDERS_BASE_URL}/{order_id}",
         auth=HTTPBasicAuth(normalise_api_key(api_key), ""),
         timeout=30,
     )
     raise_for_planet_response(response)
-    status = response.json()
-    return {
-        "order_id": order_id,
-        "state": status.get("state", "unknown"),
-        "results": status.get("results", []),
-        "error": status.get("error"),
-        "name": status.get("name"),
-    }
+    return response.json()
+
+
+def order_download_results(order: dict[str, Any]) -> list[dict[str, Any]]:
+    links = order.get("_links") or {}
+    raw_results: list[Any] = []
+    for results in (order.get("results"), links.get("results")):
+        if isinstance(results, list):
+            raw_results.extend(results)
+        elif results:
+            raw_results.append(results)
+    output: list[dict[str, Any]] = []
+    seen: set[tuple[str, str]] = set()
+    for result in raw_results:
+        if isinstance(result, str):
+            result = {"name": "download", "location": result}
+        if not isinstance(result, dict):
+            continue
+        location = result.get("location") or result.get("url") or result.get("href")
+        name = result.get("name") or result.get("id") or "download"
+        dedupe_key = (str(name), str(location or ""))
+        if dedupe_key in seen:
+            continue
+        seen.add(dedupe_key)
+        output.append(
+            {
+                "name": name,
+                "location": location,
+                "delivery": result.get("delivery"),
+                "expires_at": result.get("expires_at"),
+            }
+        )
+    return output
 
 
 def simplify_order(order: dict[str, Any]) -> dict[str, Any]:
@@ -932,7 +970,7 @@ def simplify_order(order: dict[str, Any]) -> dict[str, Any]:
         "created_on": order.get("created_on", ""),
         "last_modified": order.get("last_modified", ""),
         "source_type": order.get("source_type", ""),
-        "results": order.get("results", []),
+        "results": order_download_results(order),
         "error": order.get("error"),
     }
 
@@ -946,7 +984,85 @@ def list_orders(api_key: str, limit: int = 25) -> list[dict[str, Any]]:
     )
     raise_for_planet_response(response)
     body = response.json()
-    return [simplify_order(order) for order in body.get("orders", [])[: max(1, min(int(limit), 100))]]
+    orders = body.get("orders", [])[: max(1, min(int(limit), 100))]
+    output = []
+    for order in orders:
+        if str(order.get("state", "")).lower() == "success" and not order_download_results(order) and order.get("id"):
+            try:
+                order = fetch_order_detail(api_key, order["id"])
+            except Exception:
+                pass
+        output.append(simplify_order(order))
+    return output
+
+
+def safe_file_part(value: str, fallback: str) -> str:
+    cleaned = re.sub(r'[<>:"/\\|?*\x00-\x1f]+', "_", value.strip())
+    cleaned = re.sub(r"\s+", "_", cleaned).strip(" ._")
+    return cleaned[:180] or fallback
+
+
+def order_result_filename(result: dict[str, Any], index: int) -> str:
+    name = str(result.get("name") or "").strip()
+    if name:
+        filename = Path(unquote(urlparse(name).path)).name
+    else:
+        location_path = unquote(urlparse(str(result.get("location") or "")).path)
+        filename = Path(location_path).name
+    return safe_file_part(filename, f"planet_order_file_{index:03d}")
+
+
+def unique_path(folder: Path, filename: str) -> Path:
+    candidate = folder / filename
+    if not candidate.exists():
+        return candidate
+    stem = candidate.stem
+    suffix = candidate.suffix
+    for counter in range(2, 10000):
+        numbered = folder / f"{stem}_{counter}{suffix}"
+        if not numbered.exists():
+            return numbered
+    raise RuntimeError(f"Could not make a unique filename for {filename}.")
+
+
+def download_order_files(api_key: str, order_id: str) -> dict[str, Any]:
+    order = fetch_order_detail(api_key, order_id)
+    state = str(order.get("state", "")).lower()
+    if state != "success":
+        raise ValueError(f"Order is not ready yet. Current state: {state or 'unknown'}.")
+    results = [result for result in order_download_results(order) if result.get("location")]
+    if not results:
+        raise ValueError("Planet has not returned download URLs for this order yet. Refresh orders in a moment.")
+
+    order_name = safe_file_part(str(order.get("name") or order_id), order_id)
+    folder = PLANET_DOWNLOAD_DIR / order_name
+    folder.mkdir(parents=True, exist_ok=True)
+
+    saved_files = []
+    for index, result in enumerate(results, start=1):
+        filename = order_result_filename(result, index)
+        target = unique_path(folder, filename)
+        response = requests.get(str(result["location"]), stream=True, timeout=(15, 300))
+        response.raise_for_status()
+        with target.open("wb") as file_handle:
+            for chunk in response.iter_content(chunk_size=1024 * 1024):
+                if chunk:
+                    file_handle.write(chunk)
+        saved_files.append(
+            {
+                "name": target.name,
+                "path": str(target),
+                "size_bytes": target.stat().st_size,
+            }
+        )
+
+    return {
+        "order_id": order_id,
+        "order_name": order.get("name") or order_id,
+        "folder": str(folder),
+        "file_count": len(saved_files),
+        "files": saved_files,
+    }
 
 
 @app.get("/")
@@ -1292,6 +1408,24 @@ def api_orders_list():
         return jsonify({"error": str(exc)}), 500
     state["api_key"] = api_key
     return jsonify({"orders": orders})
+
+
+@app.post("/api/order/download")
+def api_order_download():
+    payload = request.get_json(force=True)
+    order_id = str(payload.get("order_id") or "").strip()
+    if not order_id:
+        return jsonify({"error": "Order ID is required."}), 400
+    state = get_state()
+    api_key = normalise_api_key(payload.get("api_key")) or normalise_api_key(state.get("api_key")) or load_default_api_key()
+    if not api_key:
+        return jsonify({"error": "Planet API key is required."}), 400
+    try:
+        result = download_order_files(api_key, order_id)
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+    state["api_key"] = api_key
+    return jsonify(result)
 
 
 def main() -> None:
