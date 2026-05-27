@@ -17,10 +17,27 @@ function log(message) {
 
 function initMap() {
   map = L.map("map", { preferCanvas: true }).setView([-19.183638, 146.682512], 10);
-  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+
+  const satelliteLayer = L.tileLayer(
+    "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+    {
+      maxZoom: 19,
+      attribution: "Tiles &copy; Esri"
+    }
+  ).addTo(map);
+  const streetLayer = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
     maxZoom: 19,
     attribution: "&copy; OpenStreetMap"
-  }).addTo(map);
+  });
+  L.control.layers(
+    {
+      "Satellite": satelliteLayer,
+      "Street map": streetLayer
+    },
+    {},
+    { position: "topright" }
+  ).addTo(map);
+
   drawLayer = L.layerGroup().addTo(map);
 
   map.on("click", (event) => {
