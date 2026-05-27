@@ -429,12 +429,93 @@ def search_planet(
     return items
 
 
-def load_preview_tiles(api_key: str, item_id: str, item_type: str, center_lat: float, center_lon: float, mode: str) -> Image.Image | None:
+def lonlat_to_tile_xy(lon: float, lat: float, zoom: int) -> tuple[float, float]:
+    lat = max(min(float(lat), 85.05112878), -85.05112878)
+    n = 2**zoom
+    x_tile = (float(lon) + 180.0) / 360.0 * n
+    lat_rad = math.radians(lat)
+    y_tile = (1.0 - math.log(math.tan(lat_rad) + 1 / math.cos(lat_rad)) / math.pi) / 2.0 * n
+    return x_tile, y_tile
+
+
+def aoi_bounds(aoi: dict[str, Any]) -> tuple[float, float, float, float]:
+    pts = [pt for poly in aoi_polygons(aoi) for pt in poly]
+    if not pts:
+        raise ValueError("AOI geometry is empty.")
+    lon_values = [pt[0] for pt in pts]
+    lat_values = [pt[1] for pt in pts]
+    return min(lon_values), min(lat_values), max(lon_values), max(lat_values)
+
+
+def choose_preview_tile_range(aoi: dict[str, Any], preferred_zoom: int = 17, max_axis_tiles: int = 8) -> tuple[int, int, int, int, int]:
+    min_lon, min_lat, max_lon, max_lat = aoi_bounds(aoi)
+
+    for zoom in range(preferred_zoom, 9, -1):
+        x0, y_bottom = lonlat_to_tile_xy(min_lon, min_lat, zoom)
+        x1, y_top = lonlat_to_tile_xy(max_lon, max_lat, zoom)
+        x_min = math.floor(min(x0, x1))
+        x_max = math.floor(max(x0, x1))
+        y_min = math.floor(min(y_top, y_bottom))
+        y_max = math.floor(max(y_top, y_bottom))
+        if (x_max - x_min + 1) <= max_axis_tiles and (y_max - y_min + 1) <= max_axis_tiles:
+            return zoom, x_min, x_max, y_min, y_max
+
+    return 10, x_min, x_max, y_min, y_max
+
+
+def draw_aoi_overlay(mosaic: Image.Image, aoi: dict[str, Any], zoom: int, x_min: int, y_min: int) -> None:
+    tile_size = 256
+    overlay = Image.new("RGBA", mosaic.size, (0, 0, 0, 0))
+    draw = ImageDraw.Draw(overlay)
+
+    for poly in aoi_polygons(aoi):
+        pixels = []
+        for lon, lat in poly:
+            x_tile, y_tile = lonlat_to_tile_xy(lon, lat, zoom)
+            pixels.append(((x_tile - x_min) * tile_size, (y_tile - y_min) * tile_size))
+        if len(pixels) >= 3:
+            draw.polygon(pixels, fill=(255, 80, 40, 32))
+            draw.line(pixels, fill=(255, 80, 40, 255), width=4, joint="curve")
+
+    mosaic.paste(Image.alpha_composite(mosaic.convert("RGBA"), overlay).convert("RGB"))
+
+
+def load_aoi_preview_tiles(api_key: str, item_id: str, item_type: str, aoi: dict[str, Any]) -> Image.Image | None:
+    zoom, x_min, x_max, y_min, y_max = choose_preview_tile_range(aoi)
+    tile_size = 256
+    auth = HTTPBasicAuth(api_key, "")
+    mosaic = Image.new(
+        "RGB",
+        (tile_size * (x_max - x_min + 1), tile_size * (y_max - y_min + 1)),
+        (230, 234, 238),
+    )
+    any_tiles = False
+
+    for ty in range(y_min, y_max + 1):
+        for tx in range(x_min, x_max + 1):
+            tile_url = f"https://tiles0.planet.com/data/v1/{item_type}/{item_id}/{zoom}/{tx}/{ty}.png"
+            try:
+                response = requests.get(tile_url, auth=auth, timeout=12)
+                if response.status_code == 200:
+                    tile_img = Image.open(io.BytesIO(response.content)).convert("RGB")
+                    mosaic.paste(tile_img, ((tx - x_min) * tile_size, (ty - y_min) * tile_size))
+                    any_tiles = True
+            except Exception:
+                continue
+
+    if not any_tiles:
+        return None
+
+    draw_aoi_overlay(mosaic, aoi, zoom, x_min, y_min)
+    return mosaic
+
+
+def load_center_preview_tiles(api_key: str, item_id: str, item_type: str, center_lat: float, center_lon: float, mode: str) -> Image.Image | None:
     zoom = 17
     display_grid_size = 5 if mode == "full" else 3
-    n = 2**zoom
-    x_tile = int((center_lon + 180.0) / 360.0 * n)
-    y_tile = int((1.0 - math.log(math.tan(math.radians(center_lat)) + 1 / math.cos(math.radians(center_lat))) / math.pi) / 2.0 * n)
+    x_float, y_float = lonlat_to_tile_xy(center_lon, center_lat, zoom)
+    x_tile = int(x_float)
+    y_tile = int(y_float)
     offset = display_grid_size // 2
     tiles_to_fetch = [
         (x_tile + dx, y_tile + dy)
@@ -461,15 +542,15 @@ def load_preview_tiles(api_key: str, item_id: str, item_type: str, center_lat: f
         if tile_img:
             mosaic.paste(tile_img, ((idx % display_grid_size) * tile_size, (idx // display_grid_size) * tile_size))
 
-    if mode == "aoi":
-        draw = ImageDraw.Draw(mosaic)
-        margin = tile_size // 2
-        draw.rectangle(
-            [margin, margin, mosaic.width - margin, mosaic.height - margin],
-            outline=(255, 80, 40),
-            width=4,
-        )
     return mosaic
+
+
+def load_preview_tiles(api_key: str, item_id: str, item_type: str, aoi: dict[str, Any], mode: str) -> Image.Image | None:
+    if mode == "aoi":
+        return load_aoi_preview_tiles(api_key, item_id, item_type, aoi)
+
+    center_lat, center_lon = aoi_center(aoi)
+    return load_center_preview_tiles(api_key, item_id, item_type, center_lat, center_lon, mode)
 
 
 def make_csv(items: list[dict[str, Any]], statuses: dict[str, str]) -> str:
@@ -676,13 +757,11 @@ def api_preview(item_id: str):
         return jsonify({"error": "Item not found."}), 404
     if not state.get("api_key"):
         return jsonify({"error": "Planet API key missing."}), 400
-    lat, lon = aoi_center(state.get("aoi") or {})
     image = load_preview_tiles(
         state["api_key"],
         item_id,
         item.get("item_type") or ITEM_TYPE,
-        lat,
-        lon,
+        state.get("aoi") or {},
         request.args.get("mode", "aoi"),
     )
     if image is None:
