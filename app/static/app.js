@@ -199,6 +199,13 @@ async function postJson(url, body) {
   return data;
 }
 
+async function getJson(url) {
+  const response = await fetch(url);
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || `Request failed: ${response.status}`);
+  return data;
+}
+
 async function loadConfig() {
   const response = await fetch("/api/config");
   const config = await response.json();
@@ -543,15 +550,44 @@ async function orderItems(itemIds) {
       api_key: $("apiKey").value,
       ...options
     });
-    if (result.state === "success") {
-      const lines = (result.results || []).map((entry) => `${entry.name || "download"}: ${entry.location || ""}`);
-      log(`Order ${result.order_id} complete.\n${lines.join("\n")}`);
-    } else {
-      log(`Order ${result.order_id || ""} state: ${result.state || "unknown"}`);
-    }
+    log(`Order ${result.order_id} submitted. Polling Planet for status.`);
+    pollOrderStatus(result.order_id).catch((error) => log(`Order polling stopped: ${error.message}`));
   } finally {
     $("submitOrder").disabled = false;
   }
+}
+
+function orderResultLines(results) {
+  return (results || []).map((entry) => {
+    const name = entry.name || entry.id || "download";
+    const location = entry.location || entry.url || "";
+    return location ? `${name}: ${location}` : name;
+  });
+}
+
+async function pollOrderStatus(orderId) {
+  let lastState = "";
+  for (let attempt = 0; attempt < 180; attempt += 1) {
+    if (attempt > 0) {
+      await new Promise((resolve) => setTimeout(resolve, 10000));
+    }
+    const status = await getJson(`/api/order/${encodeURIComponent(orderId)}/status`);
+    const state = status.state || "unknown";
+    if (state !== lastState) {
+      log(`Order ${orderId} state: ${state}.`);
+      lastState = state;
+    }
+    if (state === "success") {
+      const lines = orderResultLines(status.results);
+      log(`Order ${orderId} complete.${lines.length ? `\n${lines.join("\n")}` : ""}`);
+      return;
+    }
+    if (["failed", "cancelled", "partial"].includes(state)) {
+      log(`Order ${orderId} finished with state: ${state}.${status.error ? ` ${status.error}` : ""}`);
+      return;
+    }
+  }
+  log(`Order ${orderId} is still processing. You can check it later in Planet Orders.`);
 }
 
 function bindEvents() {

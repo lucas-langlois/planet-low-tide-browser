@@ -8,7 +8,6 @@ import math
 import os
 import sys
 import tempfile
-import time
 import uuid
 import webbrowser
 from datetime import datetime, timedelta, timezone
@@ -865,7 +864,7 @@ def estimate_order(item_ids: list[str], items: list[dict[str, Any]], aoi: dict[s
     }
 
 
-def order_items(
+def submit_order(
     api_key: str,
     item_ids: list[str],
     aoi: dict[str, Any],
@@ -904,17 +903,20 @@ def order_items(
     order_id = order.get("id")
     if not order_id:
         raise RuntimeError("Planet did not return an order id.")
+    return {"order_id": order_id, "state": order.get("state", "submitted"), "order": order}
 
-    deadline = time.time() + 600
-    while time.time() < deadline:
-        status = pl.orders.get_order(order_id)
-        state = status.get("state", "unknown")
-        if state == "success":
-            return {"order_id": order_id, "state": state, "results": status.get("results", [])}
-        if state in ("failed", "cancelled", "partial"):
-            return {"order_id": order_id, "state": state, "error": status.get("error")}
-        time.sleep(10)
-    return {"order_id": order_id, "state": "timeout", "results": []}
+
+def get_order_status(api_key: str, order_id: str) -> dict[str, Any]:
+    _Auth, _Planet, _Session, _data_filter, _build_request, _clip_tool, _product = import_planet_sdk()
+    pl = planet_client_from_key(api_key)
+    status = pl.orders.get_order(order_id)
+    return {
+        "order_id": order_id,
+        "state": status.get("state", "unknown"),
+        "results": status.get("results", []),
+        "error": status.get("error"),
+        "name": status.get("name"),
+    }
 
 
 @app.get("/")
@@ -1197,7 +1199,7 @@ def api_order():
         )
         if not estimate.get("can_order"):
             return jsonify({"error": "Order estimate is not orderable. Check warnings before placing the order."}), 400
-        result = order_items(
+        result = submit_order(
             api_key=api_key,
             item_ids=item_ids,
             aoi=state["aoi"],
@@ -1207,6 +1209,20 @@ def api_order():
             composite=bool(payload.get("composite", False)),
             harmonize=bool(payload.get("harmonize", False)),
         )
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+    state["last_order"] = result
+    return jsonify(result)
+
+
+@app.get("/api/order/<order_id>/status")
+def api_order_status(order_id: str):
+    state = get_state()
+    api_key = normalise_api_key(state.get("api_key")) or load_default_api_key()
+    if not api_key:
+        return jsonify({"error": "Planet API key is required."}), 400
+    try:
+        result = get_order_status(api_key, order_id)
     except Exception as exc:
         return jsonify({"error": str(exc)}), 500
     state["last_order"] = result
