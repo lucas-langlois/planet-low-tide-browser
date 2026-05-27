@@ -7,6 +7,7 @@ import json
 import math
 import os
 import re
+import subprocess
 import sys
 import tempfile
 import uuid
@@ -1034,6 +1035,45 @@ def resolve_download_root(download_dir: str | None = None) -> Path:
     return path
 
 
+def folder_picker_python() -> Path:
+    python_path = Path(sys.executable)
+    if python_path.name.lower() == "pythonw.exe":
+        console_python = python_path.with_name("python.exe")
+        if console_python.exists():
+            return console_python
+    return python_path
+
+
+def choose_download_folder(initial_dir: Path) -> str:
+    script = r"""
+import json
+import sys
+import tkinter as tk
+from pathlib import Path
+from tkinter import filedialog
+
+initial = Path(sys.argv[1])
+root = tk.Tk()
+root.withdraw()
+root.attributes("-topmost", True)
+folder = filedialog.askdirectory(
+    initialdir=str(initial if initial.exists() else Path.cwd()),
+    title="Select Planet download folder",
+    mustexist=False,
+)
+root.destroy()
+print(json.dumps({"folder": folder or ""}))
+"""
+    result = subprocess.run(
+        [str(folder_picker_python()), "-c", script, str(initial_dir)],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    payload = json.loads(result.stdout.strip() or "{}")
+    return str(payload.get("folder") or "")
+
+
 def download_order_files(api_key: str, order_id: str, download_dir: str | None = None) -> dict[str, Any]:
     order = fetch_order_detail(api_key, order_id)
     state = str(order.get("state", "")).lower()
@@ -1425,18 +1465,7 @@ def api_select_download_folder():
     payload = request.get_json(force=True)
     initial_dir = resolve_download_root(str(payload.get("download_dir") or ""))
     try:
-        import tkinter as tk
-        from tkinter import filedialog
-
-        root = tk.Tk()
-        root.withdraw()
-        root.attributes("-topmost", True)
-        folder = filedialog.askdirectory(
-            initialdir=str(initial_dir if initial_dir.exists() else PLANET_DOWNLOAD_DIR),
-            title="Select Planet download folder",
-            mustexist=False,
-        )
-        root.destroy()
+        folder = choose_download_folder(initial_dir if initial_dir.exists() else PLANET_DOWNLOAD_DIR)
     except Exception as exc:
         return jsonify({"error": f"Could not open folder picker: {exc}"}), 500
     if not folder:
