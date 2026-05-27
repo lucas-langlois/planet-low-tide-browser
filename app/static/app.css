@@ -20,6 +20,7 @@ body {
   margin: 0;
   background: var(--bg);
   color: var(--text);
+  overflow: hidden;
 }
 
 .topbar {
@@ -65,7 +66,9 @@ h2 {
 .layout {
   display: grid;
   grid-template-columns: 340px minmax(0, 1fr);
-  min-height: calc(100vh - 76px);
+  height: calc(100vh - 76px);
+  min-height: 0;
+  overflow: hidden;
 }
 
 .panel {
@@ -220,14 +223,22 @@ button.primary {
 
 .workspace {
   min-width: 0;
+  min-height: 0;
   display: grid;
-  grid-template-rows: 42vh auto minmax(0, 1fr);
+  grid-template-columns: minmax(460px, 0.9fr) minmax(360px, 1.1fr);
+  grid-template-rows: minmax(0, 1fr) auto;
+  grid-template-areas:
+    "review map"
+    "review tools";
   gap: 14px;
   padding: 14px;
+  overflow: hidden;
 }
 
 #map {
-  min-height: 320px;
+  grid-area: map;
+  min-height: 0;
+  height: 100%;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: #d8e1e8;
@@ -263,6 +274,7 @@ button.primary {
 }
 
 .map-tools {
+  grid-area: tools;
   min-height: 46px;
   padding: 9px 12px;
   display: flex;
@@ -296,11 +308,14 @@ button.primary {
 }
 
 .review-grid {
+  grid-area: review;
   min-height: 0;
   display: block;
+  overflow: hidden;
 }
 
 .candidates {
+  height: 100%;
   min-height: 0;
   padding: 14px;
   display: grid;
@@ -316,6 +331,7 @@ button.primary {
 }
 
 .table-wrap {
+  min-height: 0;
   overflow: auto;
   border: 1px solid var(--line);
   border-radius: 6px;
@@ -413,12 +429,25 @@ button.reject {
   font-size: 12px;
 }
 
-@media (max-width: 860px) {
+@media (max-width: 1180px) {
+  body {
+    overflow: auto;
+  }
+
   .layout {
     grid-template-columns: 1fr;
+    height: auto;
+    min-height: calc(100vh - 76px);
+    overflow: visible;
   }
 
   .workspace {
-    grid-template-rows: 360px auto;
+    grid-template-columns: 1fr;
+    grid-template-rows: 360px auto minmax(480px, auto);
+    grid-template-areas:
+      "map"
+      "tools"
+      "review";
+    overflow: visible;
   }
 }
