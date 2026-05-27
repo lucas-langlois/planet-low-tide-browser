@@ -184,6 +184,24 @@ button.primary {
   color: #fff;
 }
 
+button.compact,
+.button.compact {
+  min-height: 30px;
+  padding: 5px 9px;
+  font-size: 12px;
+}
+
+button.subtle {
+  color: var(--muted);
+  background: #f7f9fb;
+}
+
+button.primary-action {
+  color: #fff;
+  background: var(--blue);
+  border-color: var(--blue);
+}
+
 .button-row,
 .segmented,
 .decision-row {
@@ -328,6 +346,27 @@ button.primary {
   align-items: start;
   justify-content: space-between;
   gap: 12px;
+}
+
+.candidates .section-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.candidate-actions {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.action-group {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .table-wrap {

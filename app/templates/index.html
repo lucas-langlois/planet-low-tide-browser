@@ -118,12 +118,16 @@
               <p id="resultSummary">No search run yet.</p>
               <p id="decisionSummary" class="hint">Keep the good scenes, then reject the rest.</p>
             </div>
-            <div class="button-row">
-              <a class="button" href="/export/kept.csv">CSV</a>
-              <a class="button" href="/export/kept.geojson">GeoJSON</a>
-              <button id="copyKeptIds">Copy item IDs</button>
-              <button id="rejectUnkept">Reject not kept</button>
-              <button id="orderKept">Order kept</button>
+            <div class="candidate-actions">
+              <div class="action-group" aria-label="Export kept images">
+                <a class="button compact" href="/export/kept.csv">CSV</a>
+                <a class="button compact" href="/export/kept.geojson">GeoJSON</a>
+                <button id="copyKeptIds" class="compact">Copy IDs</button>
+              </div>
+              <div class="action-group" aria-label="Review decisions">
+                <button id="rejectUnkept" class="compact subtle">Reject rest</button>
+                <button id="orderKept" class="compact primary-action">Order kept</button>
+              </div>
             </div>
           </div>
           <div class="table-wrap">
