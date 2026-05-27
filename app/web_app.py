@@ -34,6 +34,7 @@ ITEM_TYPE = "PSScene"
 PRODUCT_BUNDLE = "visual"
 PLANET_DATA_BASE_URL = "https://api.planet.com/data/v1"
 DEFAULT_TIMEZONE = "Australia/Brisbane"
+EDUCATION_MONTHLY_QUOTA_KM2 = 3000.0
 ORDER_ASSET_OPTIONS = {
     "visual": {
         "label": "Visual",
@@ -821,9 +822,14 @@ def estimate_order(item_ids: list[str], items: list[dict[str, Any]], aoi: dict[s
     output_images = 1 if composite and item_count else item_count
     pixel_area_m2 = 3.0 * 3.0
     estimated_bytes = processed_area * 1_000_000.0 / pixel_area_m2 * asset["bands"] * asset["bytes_per_sample"]
+    quota_percent = processed_area / EDUCATION_MONTHLY_QUOTA_KM2 * 100.0 if EDUCATION_MONTHLY_QUOTA_KM2 else 0.0
     warnings = []
     if item_count > 500:
         warnings.append("Orders API scenes orders are limited to 500 items per request.")
+    if quota_percent >= 99:
+        warnings.append("This estimate exceeds the standard 3,000 km2 monthly education quota.")
+    elif quota_percent >= 80:
+        warnings.append("This estimate uses more than 80% of the standard 3,000 km2 monthly education quota.")
     if not clip_to_aoi:
         warnings.append("Clip is off. Delivered files and quota use may be much larger than the AOI-intersection estimate.")
     if composite and aoi_area > 1500:
@@ -839,6 +845,8 @@ def estimate_order(item_ids: list[str], items: list[dict[str, Any]], aoi: dict[s
         "aoi_area_km2": round(aoi_area, 3),
         "estimated_aoi_intersection_km2": round(intersection_area, 3),
         "estimated_processed_area_km2": round(processed_area, 3),
+        "education_monthly_quota_km2": EDUCATION_MONTHLY_QUOTA_KM2,
+        "education_quota_percent": round(quota_percent, 1),
         "estimated_raster_gb": round(estimated_bytes / 1_000_000_000.0, 3),
         "tools": {
             "clip_to_aoi": clip_to_aoi,

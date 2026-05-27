@@ -417,11 +417,12 @@ function renderOrderSummary(estimate) {
       <div class="summary-line"><span>AOI area</span><strong>${estimate.aoi_area_km2} km²</strong></div>
       <div class="summary-line"><span>AOI-intersection area</span><strong>${estimate.estimated_aoi_intersection_km2} km²</strong></div>
       <div class="summary-line"><span>Processed area estimate</span><strong>${estimate.estimated_processed_area_km2} km²</strong></div>
+      <div class="summary-line"><span>Education quota use</span><strong>${estimate.education_quota_percent}% of ${estimate.education_monthly_quota_km2} km²/month</strong></div>
       <div class="summary-line"><span>Rough raster payload</span><strong>${estimate.estimated_raster_gb} GB</strong></div>
       <div class="summary-line"><span>Tools</span><strong>${tools.length ? escapeHtml(tools.join(", ")) : "None"}</strong></div>
     </div>
     ${warnings ? `<ul class="warning-list">${warnings}</ul>` : ""}
-    <p class="summary-note">Estimate is based on AOI geometry, candidate coverage, a 3 m pixel size, and selected bands. Planet decides final quota and download size when the order runs.</p>
+    <p class="summary-note">Education accounts commonly have a 3,000 km² monthly quota. Estimate is based on AOI geometry, candidate coverage, a 3 m pixel size, and selected bands. Planet decides final quota and download size when the order runs.</p>
   `;
   $("submitOrder").disabled = !estimate.can_order;
 }
