@@ -55,6 +55,26 @@ py -3.11 -m venv .venv
 - `CSIRO_tidal_const_v12.nc` is intentionally ignored by git because it is a
   large local model file.
 - Kept images can be exported as CSV or GeoJSON.
+- Kept images can also be ordered through a review panel that asks for an order
+  name, product bundle, and optional tools before submitting to Planet.
+
+## Planet Ordering
+
+The order panel is modelled on Planet Explorer's basic order flow:
+
+1. Keep the candidate scenes you want to download.
+2. Click `Order kept`.
+3. Enter an order name.
+4. Choose an asset type: visual, surface reflectance 4-band, or surface
+   reflectance 8-band.
+5. Choose tools: clip to AOI, composite, and/or harmonize to Sentinel-2.
+6. Review the estimate before clicking `Place order`.
+
+The estimate reports item count, expected output image count, AOI area,
+AOI-intersection area, processed-area estimate, and a rough uncompressed raster
+payload estimate. Planet's Orders API makes the final quota and file-size
+decision when the order runs, so the estimate is a guardrail rather than a
+guarantee.
 
 ## AOI Tide Prediction
 

@@ -358,6 +358,110 @@ function keptItemIds() {
   return results.filter((item) => statuses[item.id] === "keep").map((item) => item.id);
 }
 
+function escapeHtml(value) {
+  return String(value ?? "").replace(/[&<>"']/g, (char) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    "\"": "&quot;",
+    "'": "&#39;"
+  })[char]);
+}
+
+function defaultOrderName() {
+  const now = new Date();
+  const stamp = [
+    now.getFullYear(),
+    String(now.getMonth() + 1).padStart(2, "0"),
+    String(now.getDate()).padStart(2, "0"),
+    String(now.getHours()).padStart(2, "0"),
+    String(now.getMinutes()).padStart(2, "0")
+  ].join("");
+  return `planet_low_tide_${stamp}`;
+}
+
+function orderOptions() {
+  const asset = document.querySelector("input[name='orderAsset']:checked")?.value || "visual";
+  return {
+    order_name: $("orderName").value.trim(),
+    asset_key: asset,
+    clip_to_aoi: $("orderClip").checked,
+    composite: $("orderComposite").checked,
+    harmonize: $("orderHarmonize").checked
+  };
+}
+
+function updateOrderToolAvailability() {
+  const asset = document.querySelector("input[name='orderAsset']:checked")?.value || "visual";
+  const harmonize = $("orderHarmonize");
+  if (asset === "visual") {
+    harmonize.checked = false;
+    harmonize.disabled = true;
+  } else {
+    harmonize.disabled = false;
+  }
+}
+
+function renderOrderSummary(estimate) {
+  const tools = [];
+  if (estimate.tools?.clip_to_aoi) tools.push("Clip to AOI");
+  if (estimate.tools?.composite) tools.push("Composite");
+  if (estimate.tools?.harmonize) tools.push("Harmonize to Sentinel-2");
+  const warnings = (estimate.warnings || []).map((warning) => `<li>${escapeHtml(warning)}</li>`).join("");
+  $("orderSummary").innerHTML = `
+    <div class="summary-list">
+      <div class="summary-line"><span>Items</span><strong>${estimate.item_count}</strong></div>
+      <div class="summary-line"><span>Output images</span><strong>${estimate.output_images}</strong></div>
+      <div class="summary-line"><span>Asset type</span><strong>${escapeHtml(estimate.asset_label)}</strong></div>
+      <div class="summary-line"><span>Bundle</span><strong>${escapeHtml(estimate.product_bundle)}</strong></div>
+      <div class="summary-line"><span>AOI area</span><strong>${estimate.aoi_area_km2} km²</strong></div>
+      <div class="summary-line"><span>AOI-intersection area</span><strong>${estimate.estimated_aoi_intersection_km2} km²</strong></div>
+      <div class="summary-line"><span>Processed area estimate</span><strong>${estimate.estimated_processed_area_km2} km²</strong></div>
+      <div class="summary-line"><span>Rough raster payload</span><strong>${estimate.estimated_raster_gb} GB</strong></div>
+      <div class="summary-line"><span>Tools</span><strong>${tools.length ? escapeHtml(tools.join(", ")) : "None"}</strong></div>
+    </div>
+    ${warnings ? `<ul class="warning-list">${warnings}</ul>` : ""}
+    <p class="summary-note">Estimate is based on AOI geometry, candidate coverage, a 3 m pixel size, and selected bands. Planet decides final quota and download size when the order runs.</p>
+  `;
+  $("submitOrder").disabled = !estimate.can_order;
+}
+
+async function refreshOrderEstimate() {
+  const ids = keptItemIds();
+  const options = orderOptions();
+  if (!ids.length) {
+    $("orderSummary").textContent = "Keep at least one candidate before ordering.";
+    $("submitOrder").disabled = true;
+    return;
+  }
+  if (!options.order_name) {
+    $("orderSummary").textContent = "Enter an order name to estimate and place the order.";
+    $("submitOrder").disabled = true;
+    return;
+  }
+  $("orderSummary").textContent = "Estimating order...";
+  const estimate = await postJson("/api/order/estimate", { item_ids: ids, ...options });
+  renderOrderSummary(estimate);
+}
+
+async function openOrderModal() {
+  const ids = keptItemIds();
+  if (!ids.length) {
+    log("No kept items selected for order.");
+    return;
+  }
+  if (!$("orderName").value.trim()) {
+    $("orderName").value = defaultOrderName();
+  }
+  updateOrderToolAvailability();
+  $("orderModal").classList.remove("hidden");
+  await refreshOrderEstimate();
+}
+
+function closeOrderModal() {
+  $("orderModal").classList.add("hidden");
+}
+
 async function setItemStatus(itemId, status) {
   await postJson("/api/status", { item_id: itemId, status });
   statuses[itemId] = status;
@@ -411,17 +515,28 @@ async function orderItems(itemIds) {
     log("No items selected for order.");
     return;
   }
-  log(`Creating Planet order for ${itemIds.length} item(s). This can take several minutes.`);
-  const result = await postJson("/api/order", {
-    item_ids: itemIds,
-    clip_to_aoi: true,
-    api_key: $("apiKey").value
-  });
-  if (result.state === "success") {
-    const lines = (result.results || []).map((entry) => `${entry.name || "download"}: ${entry.location || ""}`);
-    log(`Order ${result.order_id} complete.\n${lines.join("\n")}`);
-  } else {
-    log(`Order ${result.order_id || ""} state: ${result.state || "unknown"}`);
+  const options = orderOptions();
+  if (!options.order_name) {
+    log("Enter an order name first.");
+    return;
+  }
+  $("submitOrder").disabled = true;
+  log(`Creating Planet order "${options.order_name}" for ${itemIds.length} item(s). This can take several minutes.`);
+  try {
+    const result = await postJson("/api/order", {
+      item_ids: itemIds,
+      api_key: $("apiKey").value,
+      ...options
+    });
+    closeOrderModal();
+    if (result.state === "success") {
+      const lines = (result.results || []).map((entry) => `${entry.name || "download"}: ${entry.location || ""}`);
+      log(`Order ${result.order_id} complete.\n${lines.join("\n")}`);
+    } else {
+      log(`Order ${result.order_id || ""} state: ${result.state || "unknown"}`);
+    }
+  } finally {
+    $("submitOrder").disabled = false;
   }
 }
 
@@ -462,8 +577,23 @@ function bindEvents() {
   $("apiKey").addEventListener("paste", () => setTimeout(scheduleApiValidation, 0));
   $("copyKeptIds").addEventListener("click", () => copyKeptIds().catch((error) => log(error.message)));
   $("rejectUnkept").addEventListener("click", () => rejectUnkeptItems().catch((error) => log(error.message)));
-  $("orderKept").addEventListener("click", () => {
-    orderItems(keptItemIds()).catch((error) => log(error.message));
+  $("orderKept").addEventListener("click", () => openOrderModal().catch((error) => log(error.message)));
+  $("closeOrderModal").addEventListener("click", closeOrderModal);
+  $("cancelOrderModal").addEventListener("click", closeOrderModal);
+  $("refreshOrderEstimate").addEventListener("click", () => refreshOrderEstimate().catch((error) => {
+    $("submitOrder").disabled = true;
+    $("orderSummary").textContent = error.message;
+  }));
+  $("submitOrder").addEventListener("click", () => orderItems(keptItemIds()).catch((error) => log(error.message)));
+  $("orderName").addEventListener("input", () => refreshOrderEstimate().catch(() => {}));
+  document.querySelectorAll("input[name='orderAsset'], #orderClip, #orderComposite, #orderHarmonize").forEach((input) => {
+    input.addEventListener("change", () => {
+      updateOrderToolAvailability();
+      refreshOrderEstimate().catch((error) => {
+        $("submitOrder").disabled = true;
+        $("orderSummary").textContent = error.message;
+      });
+    });
   });
 }
 

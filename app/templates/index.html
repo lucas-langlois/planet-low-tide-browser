@@ -152,6 +152,69 @@
     </section>
   </main>
 
+  <div id="orderModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="orderModalTitle">
+    <div class="order-modal panel">
+      <div class="modal-head">
+        <div>
+          <h2 id="orderModalTitle">Order kept imagery</h2>
+          <p class="hint">Review bundle, tools, and estimated size before placing the Planet order.</p>
+        </div>
+        <button id="closeOrderModal" class="icon-button" aria-label="Close order settings">×</button>
+      </div>
+
+      <div class="order-body">
+        <section class="order-form">
+          <label>Order name
+            <input id="orderName" type="text" maxlength="200" placeholder="planet_low_tide_order">
+          </label>
+
+          <div class="field-group">
+            <h3>Asset type</h3>
+            <label class="asset-option">
+              <input type="radio" name="orderAsset" value="visual" checked>
+              <span><strong>Visual</strong> RGB visual imagery.</span>
+            </label>
+            <label class="asset-option">
+              <input type="radio" name="orderAsset" value="sr_4b">
+              <span><strong>Surface reflectance 4-band</strong> Analytic surface reflectance with UDM2.</span>
+            </label>
+            <label class="asset-option">
+              <input type="radio" name="orderAsset" value="sr_8b">
+              <span><strong>Surface reflectance 8-band</strong> Eight-band analytic surface reflectance with UDM2.</span>
+            </label>
+          </div>
+
+          <div class="field-group">
+            <h3>Tools</h3>
+            <label class="check-row">
+              <input id="orderClip" type="checkbox" checked>
+              Clip to AOI
+            </label>
+            <label class="check-row">
+              <input id="orderComposite" type="checkbox">
+              Composite items
+            </label>
+            <label class="check-row">
+              <input id="orderHarmonize" type="checkbox">
+              Harmonize to Sentinel-2
+            </label>
+          </div>
+        </section>
+
+        <aside class="order-summary">
+          <h3>Order summary</h3>
+          <div id="orderSummary">Choose settings to estimate the order.</div>
+        </aside>
+      </div>
+
+      <div class="modal-actions">
+        <button id="cancelOrderModal">Cancel</button>
+        <button id="refreshOrderEstimate">Refresh estimate</button>
+        <button id="submitOrder" class="primary-action">Place order</button>
+      </div>
+    </div>
+  </div>
+
   <script src="/vendor/leaflet/leaflet.min.js"></script>
   <script src="/static/app.js"></script>
 </body>

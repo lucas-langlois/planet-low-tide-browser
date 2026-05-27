@@ -34,6 +34,29 @@ ITEM_TYPE = "PSScene"
 PRODUCT_BUNDLE = "visual"
 PLANET_DATA_BASE_URL = "https://api.planet.com/data/v1"
 DEFAULT_TIMEZONE = "Australia/Brisbane"
+ORDER_ASSET_OPTIONS = {
+    "visual": {
+        "label": "Visual",
+        "product_bundle": "visual",
+        "bands": 3,
+        "bytes_per_sample": 1,
+        "description": "RGB visual imagery.",
+    },
+    "sr_4b": {
+        "label": "Surface reflectance 4-band",
+        "product_bundle": "analytic_sr_udm2",
+        "bands": 4,
+        "bytes_per_sample": 2,
+        "description": "Analytic surface reflectance with UDM2.",
+    },
+    "sr_8b": {
+        "label": "Surface reflectance 8-band",
+        "product_bundle": "analytic_8b_sr_udm2",
+        "bands": 8,
+        "bytes_per_sample": 2,
+        "description": "Eight-band analytic surface reflectance with UDM2.",
+    },
+}
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("PLANET_BROWSER_SECRET_KEY", uuid.uuid4().hex)
@@ -224,6 +247,24 @@ def polygons_to_geojson(polygons: list[list[list[float]]]) -> dict[str, Any]:
     if len(polygons) == 1:
         return {"type": "Polygon", "coordinates": [close_ring(polygons[0])]}
     return {"type": "MultiPolygon", "coordinates": [[close_ring(poly)] for poly in polygons]}
+
+
+def aoi_area_km2(aoi: dict[str, Any]) -> float:
+    try:
+        from pyproj import Geod
+
+        geod = Geod(ellps="WGS84")
+        total_area_m2 = 0.0
+        for poly in aoi_polygons(aoi):
+            if len(poly) < 4:
+                continue
+            lons = [point[0] for point in poly]
+            lats = [point[1] for point in poly]
+            area_m2, _perimeter_m = geod.polygon_area_perimeter(lons, lats)
+            total_area_m2 += abs(area_m2)
+        return total_area_m2 / 1_000_000.0
+    except Exception:
+        return 0.0
 
 
 def parse_uploaded_aoi(path: Path) -> dict[str, Any]:
@@ -738,19 +779,107 @@ def make_csv(items: list[dict[str, Any]], statuses: dict[str, str]) -> str:
     return buf.getvalue()
 
 
-def order_items(api_key: str, item_ids: list[str], aoi: dict[str, Any], clip_to_aoi: bool) -> dict[str, Any]:
-    _Auth, _Planet, _Session, _data_filter, _build_request, clip_tool, _product = import_planet_sdk()
+def order_asset_option(asset_key: str) -> dict[str, Any]:
+    if asset_key not in ORDER_ASSET_OPTIONS:
+        raise ValueError("Choose a valid order asset type.")
+    return ORDER_ASSET_OPTIONS[asset_key]
+
+
+def selected_items_by_id(state: dict[str, Any], item_ids: list[str]) -> list[dict[str, Any]]:
+    wanted = set(item_ids)
+    return [item for item in state.get("items", []) if item.get("id") in wanted]
+
+
+def build_order_tools(aoi: dict[str, Any], clip_to_aoi: bool, composite: bool, harmonize: bool, asset_key: str) -> list[dict[str, Any]]:
+    if harmonize and asset_key == "visual":
+        raise ValueError("Harmonize requires a surface reflectance asset type.")
+    tools: list[dict[str, Any]] = []
+    if clip_to_aoi:
+        tools.append({"clip": {"aoi": aoi}})
+    if harmonize:
+        tools.append({"harmonize": {"target_sensor": "Sentinel-2"}})
+    if composite:
+        tools.append({"composite": {"group_by": "order"}})
+    return tools
+
+
+def estimate_order(item_ids: list[str], items: list[dict[str, Any]], aoi: dict[str, Any], asset_key: str, clip_to_aoi: bool, composite: bool, harmonize: bool) -> dict[str, Any]:
+    asset = order_asset_option(asset_key)
+    item_count = len(item_ids)
+    aoi_area = aoi_area_km2(aoi)
+    intersection_area = 0.0
+    for item in items:
+        coverage = item.get("aoi_coverage_percent")
+        if coverage is None:
+            coverage = 100.0
+        intersection_area += aoi_area * max(0.0, min(float(coverage), 100.0)) / 100.0
+
+    processed_area = aoi_area if composite and clip_to_aoi and item_count else intersection_area
+    if not clip_to_aoi:
+        processed_area = intersection_area
+
+    output_images = 1 if composite and item_count else item_count
+    pixel_area_m2 = 3.0 * 3.0
+    estimated_bytes = processed_area * 1_000_000.0 / pixel_area_m2 * asset["bands"] * asset["bytes_per_sample"]
+    warnings = []
+    if item_count > 500:
+        warnings.append("Orders API scenes orders are limited to 500 items per request.")
+    if not clip_to_aoi:
+        warnings.append("Clip is off. Delivered files and quota use may be much larger than the AOI-intersection estimate.")
+    if composite and aoi_area > 1500:
+        warnings.append("Planet documents a 1,500 km2 PSScene composite output limit.")
+    if harmonize and asset_key == "visual":
+        warnings.append("Harmonize is only available for surface reflectance assets.")
+
+    return {
+        "item_count": item_count,
+        "output_images": output_images,
+        "asset_label": asset["label"],
+        "product_bundle": asset["product_bundle"],
+        "aoi_area_km2": round(aoi_area, 3),
+        "estimated_aoi_intersection_km2": round(intersection_area, 3),
+        "estimated_processed_area_km2": round(processed_area, 3),
+        "estimated_raster_gb": round(estimated_bytes / 1_000_000_000.0, 3),
+        "tools": {
+            "clip_to_aoi": clip_to_aoi,
+            "composite": composite,
+            "harmonize": harmonize,
+        },
+        "warnings": warnings,
+        "can_order": bool(item_count) and item_count <= 500 and not (harmonize and asset_key == "visual"),
+    }
+
+
+def order_items(
+    api_key: str,
+    item_ids: list[str],
+    aoi: dict[str, Any],
+    order_name: str,
+    asset_key: str,
+    clip_to_aoi: bool,
+    composite: bool,
+    harmonize: bool,
+) -> dict[str, Any]:
+    _Auth, _Planet, _Session, _data_filter, _build_request, _clip_tool, _product = import_planet_sdk()
     api_key = normalise_api_key(api_key)
     pl = planet_client_from_key(api_key)
-    tools = [clip_tool(aoi)] if clip_to_aoi else []
-    order_name = f"planet_browser_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    asset = order_asset_option(asset_key)
+    if not order_name.strip():
+        raise ValueError("Order name is required.")
+    if not item_ids:
+        raise ValueError("No kept items to order.")
+    if len(item_ids) > 500:
+        raise ValueError("Orders API scenes orders are limited to 500 items per request.")
+    tools = build_order_tools(aoi, clip_to_aoi, composite, harmonize, asset_key)
     order_request = {
-        "name": order_name,
+        "name": order_name.strip(),
+        "source_type": "scenes",
+        "order_type": "partial",
         "products": [
             {
                 "item_ids": item_ids,
                 "item_type": ITEM_TYPE,
-                "product_bundle": PRODUCT_BUNDLE,
+                "product_bundle": asset["product_bundle"],
             }
         ],
     }
@@ -1008,6 +1137,27 @@ def export_kept_geojson():
     )
 
 
+@app.post("/api/order/estimate")
+def api_order_estimate():
+    payload = request.get_json(force=True)
+    state = get_state()
+    item_ids = payload.get("item_ids") or [item["id"] for item in state["items"] if state["statuses"].get(item["id"]) == "keep"]
+    items = selected_items_by_id(state, item_ids)
+    try:
+        estimate = estimate_order(
+            item_ids=item_ids,
+            items=items,
+            aoi=state.get("aoi") or {},
+            asset_key=payload.get("asset_key", "visual"),
+            clip_to_aoi=bool(payload.get("clip_to_aoi", True)),
+            composite=bool(payload.get("composite", False)),
+            harmonize=bool(payload.get("harmonize", False)),
+        )
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 400
+    return jsonify(estimate)
+
+
 @app.post("/api/order")
 def api_order():
     payload = request.get_json(force=True)
@@ -1021,7 +1171,27 @@ def api_order():
     if not item_ids:
         return jsonify({"error": "No kept items to order."}), 400
     try:
-        result = order_items(api_key, item_ids, state["aoi"], bool(payload.get("clip_to_aoi", True)))
+        estimate = estimate_order(
+            item_ids=item_ids,
+            items=selected_items_by_id(state, item_ids),
+            aoi=state.get("aoi") or {},
+            asset_key=payload.get("asset_key", "visual"),
+            clip_to_aoi=bool(payload.get("clip_to_aoi", True)),
+            composite=bool(payload.get("composite", False)),
+            harmonize=bool(payload.get("harmonize", False)),
+        )
+        if not estimate.get("can_order"):
+            return jsonify({"error": "Order estimate is not orderable. Check warnings before placing the order."}), 400
+        result = order_items(
+            api_key=api_key,
+            item_ids=item_ids,
+            aoi=state["aoi"],
+            order_name=payload.get("order_name") or "",
+            asset_key=payload.get("asset_key", "visual"),
+            clip_to_aoi=bool(payload.get("clip_to_aoi", True)),
+            composite=bool(payload.get("composite", False)),
+            harmonize=bool(payload.get("harmonize", False)),
+        )
     except Exception as exc:
         return jsonify({"error": str(exc)}), 500
     state["last_order"] = result
