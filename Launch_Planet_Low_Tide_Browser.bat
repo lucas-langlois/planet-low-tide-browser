@@ -85,6 +85,16 @@ if not exist "%VENV_DIR%\Scripts\python.exe" (
   echo.
 )
 
+if exist "%SETUP_MARKER%" (
+  "%VENV_DIR%\Scripts\python.exe" -c "import flask, pandas, numpy, scipy, xarray, netCDF4, rasterio, requests, PIL, pytz, shapefile, pyproj, shapely, timezonefinder, planet, utide" >nul 2>&1
+  if errorlevel 1 (
+    echo [3/5] Existing local Python environment is missing required packages.
+    echo Package setup will run again.
+    echo.
+    del "%SETUP_MARKER%" >nul 2>&1
+  )
+)
+
 if not exist "%SETUP_MARKER%" (
   echo.
   echo [4/5] Installing app packages ...
@@ -114,6 +124,15 @@ if not exist "%SETUP_MARKER%" (
     echo.
     echo Failed to install packages.
     echo Check that this VM can access PyPI, or ask IT to allow package installs.
+    echo See:
+    echo   %PIP_LOG%
+    pause
+    exit /b 1
+  )
+  "%VENV_DIR%\Scripts\python.exe" -c "import flask, pandas, numpy, scipy, xarray, netCDF4, rasterio, requests, PIL, pytz, shapefile, pyproj, shapely, timezonefinder, planet, utide" >nul 2>&1
+  if errorlevel 1 (
+    echo.
+    echo Package install finished, but required imports still failed.
     echo See:
     echo   %PIP_LOG%
     pause
