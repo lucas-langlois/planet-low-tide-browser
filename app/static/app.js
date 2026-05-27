@@ -1,5 +1,6 @@
 let map;
 let aoiLayer;
+let drawLayer;
 let drawing = false;
 let drawPoints = [];
 let currentAoi = null;
@@ -20,14 +21,18 @@ function initMap() {
     maxZoom: 19,
     attribution: "&copy; OpenStreetMap"
   }).addTo(map);
+  drawLayer = L.layerGroup().addTo(map);
 
   map.on("click", (event) => {
     if (!drawing) return;
+    event.originalEvent.preventDefault();
     drawPoints.push([event.latlng.lng, event.latlng.lat]);
     drawAoiPreview();
+    log(`${drawPoints.length} AOI ${drawPoints.length === 1 ? "vertex" : "vertices"} added.`);
   });
 
-  map.on("dblclick", () => {
+  map.on("dblclick", (event) => {
+    event.originalEvent.preventDefault();
     if (drawing) saveDrawnAoi();
   });
 }
@@ -35,6 +40,7 @@ function initMap() {
 function setAoi(aoi) {
   currentAoi = aoi;
   if (aoiLayer) map.removeLayer(aoiLayer);
+  if (drawLayer) drawLayer.clearLayers();
   aoiLayer = L.geoJSON(aoi, {
     style: { color: "#f05a28", weight: 3, fillOpacity: 0.12 }
   }).addTo(map);
@@ -42,13 +48,39 @@ function setAoi(aoi) {
 }
 
 function drawAoiPreview() {
-  if (aoiLayer) map.removeLayer(aoiLayer);
+  if (aoiLayer) {
+    map.removeLayer(aoiLayer);
+    aoiLayer = null;
+  }
+  drawLayer.clearLayers();
   if (drawPoints.length === 0) return;
-  const coords = drawPoints.length > 2 ? [...drawPoints, drawPoints[0]] : drawPoints;
-  currentAoi = { type: "Polygon", coordinates: [coords] };
-  aoiLayer = L.geoJSON(currentAoi, {
-    style: { color: "#f05a28", weight: 3, fillOpacity: 0.12 }
-  }).addTo(map);
+
+  const latLngs = drawPoints.map((point) => [point[1], point[0]]);
+  latLngs.forEach((latLng, index) => {
+    L.circleMarker(latLng, {
+      radius: 5,
+      color: "#f05a28",
+      fillColor: "#ffffff",
+      fillOpacity: 1,
+      weight: 2
+    }).bindTooltip(`${index + 1}`, { permanent: false }).addTo(drawLayer);
+  });
+
+  if (latLngs.length >= 2) {
+    L.polyline(latLngs, { color: "#f05a28", weight: 3, dashArray: "6 5" }).addTo(drawLayer);
+  }
+
+  if (drawPoints.length >= 3) {
+    const coords = [...drawPoints, drawPoints[0]];
+    currentAoi = { type: "Polygon", coordinates: [coords] };
+    L.polygon(latLngs, {
+      color: "#f05a28",
+      weight: 3,
+      fillOpacity: 0.12
+    }).addTo(drawLayer);
+  } else {
+    currentAoi = null;
+  }
 }
 
 function switchMode(mode) {
@@ -106,11 +138,12 @@ async function uploadAoi() {
 }
 
 async function saveDrawnAoi() {
-  drawing = false;
   if (!currentAoi || drawPoints.length < 3) {
     log("Draw at least three vertices.");
     return;
   }
+  drawing = false;
+  map.doubleClickZoom.enable();
   const data = await postJson("/api/aoi/drawn", { aoi: currentAoi });
   setAoi(data.aoi);
   log("Drawn AOI saved.");
@@ -223,7 +256,13 @@ function bindEvents() {
   $("startDraw").addEventListener("click", () => {
     drawing = true;
     drawPoints = [];
-    if (aoiLayer) map.removeLayer(aoiLayer);
+    currentAoi = null;
+    map.doubleClickZoom.disable();
+    if (aoiLayer) {
+      map.removeLayer(aoiLayer);
+      aoiLayer = null;
+    }
+    drawLayer.clearLayers();
     log("Drawing started.");
   });
   $("undoPoint").addEventListener("click", () => {
@@ -232,9 +271,11 @@ function bindEvents() {
   });
   $("clearAoi").addEventListener("click", () => {
     drawing = false;
+    map.doubleClickZoom.enable();
     drawPoints = [];
     currentAoi = null;
     if (aoiLayer) map.removeLayer(aoiLayer);
+    drawLayer.clearLayers();
     log("AOI cleared.");
   });
   $("saveDrawnAoi").addEventListener("click", () => saveDrawnAoi().catch((error) => log(error.message)));
