@@ -7,6 +7,7 @@ import json
 import os
 import signal
 import sys
+import threading
 import time
 from concurrent.futures import ProcessPoolExecutor
 from functools import lru_cache
@@ -19,9 +20,10 @@ def _signal_handler(signum, frame):
   print(f"\nCaught signal {name} ({signum}) — terminating.", file=sys.stderr, flush=True)
   sys.exit(128 + signum)
 
-signal.signal(signal.SIGTERM, _signal_handler)
-if hasattr(signal, "SIGHUP"):
-  signal.signal(signal.SIGHUP, _signal_handler)
+if threading.current_thread() is threading.main_thread():
+  signal.signal(signal.SIGTERM, _signal_handler)
+  if hasattr(signal, "SIGHUP"):
+    signal.signal(signal.SIGHUP, _signal_handler)
 
 import numpy as np
 import pandas as pd
@@ -1974,4 +1976,3 @@ if __name__ == "__main__":
     import traceback
     traceback.print_exc(file=sys.stderr)
     sys.exit(1)
-

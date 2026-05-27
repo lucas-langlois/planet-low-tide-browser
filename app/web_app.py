@@ -137,7 +137,7 @@ def import_tide_predictions():
     except Exception as exc:
         raise RuntimeError(
             "Could not import tide/Tide_predictions.py. "
-            "Install the tide dependencies in the local conda environment."
+            f"Install the tide dependencies in the local .venv first. Details: {exc}"
         ) from exc
 
 
