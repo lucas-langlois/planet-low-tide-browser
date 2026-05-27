@@ -421,7 +421,7 @@ function renderOrderSummary(estimate) {
       <div class="summary-line"><span>Tools</span><strong>${tools.length ? escapeHtml(tools.join(", ")) : "None"}</strong></div>
     </div>
     ${warnings ? `<ul class="warning-list">${warnings}</ul>` : ""}
-    <p class="summary-note">Education accounts commonly have a 3,000 km² monthly quota. Estimate is based on AOI geometry and candidate coverage. Planet decides final quota when the order runs.</p>
+    <p class="summary-note">Estimate uses AOI geometry and kept-scene coverage to compare expected quota use with the standard 3,000 km²/month education-account quota. Planet calculates the final quota when the order runs.</p>
   `;
   $("submitOrder").disabled = !estimate.can_order;
 }
