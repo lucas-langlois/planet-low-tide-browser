@@ -122,9 +122,8 @@ The PlanetScope scene asset choices use these Orders API bundles:
 - `analytic_sr_udm2`: 4-band surface reflectance with UDM2.
 - `analytic_8b_sr_udm2`: 8-band surface reflectance with UDM2.
 
-Completed orders can be downloaded from the `Show orders` panel. The default
-download folder is `Planet_download`, but users can type another folder path or
-click `Browse...` to choose a folder before pressing `Download files`.
+Completed orders can be downloaded from the `Show orders` panel. Files are
+saved under `Planet_download/<order name>/`.
 
 The estimate reports item count, expected output image count, AOI area,
 AOI-intersection area, and processed-area estimate. The app also compares the

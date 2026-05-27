@@ -209,9 +209,6 @@ async function getJson(url) {
 async function loadConfig() {
   const response = await fetch("/api/config");
   const config = await response.json();
-  if ($("downloadFolder") && config.download_dir) {
-    $("downloadFolder").value = config.download_dir;
-  }
   $("runtimeStatus").textContent = config.model_exists
     ? `CSIRO model found. Item type: ${config.item_type}`
     : `CSIRO model missing: ${config.model_path}`;
@@ -569,50 +566,91 @@ function orderResultLines(results) {
   });
 }
 
+function directDownloadUrl(entry) {
+  const rawUrl = entry.location || entry.url || entry.href;
+  if (!rawUrl) return "";
+  try {
+    const parsed = new URL(rawUrl);
+    return ["https:", "http:"].includes(parsed.protocol) ? parsed.href : "";
+  } catch {
+    return "";
+  }
+}
+
 function orderDownloadHtml(order) {
   if (String(order.state || "").toLowerCase() !== "success") {
     return "";
   }
-  const resultCount = (order.results || []).filter((entry) => entry.location || entry.url || entry.href).length;
-  const readyText = resultCount ? `${resultCount} file${resultCount === 1 ? "" : "s"} ready` : "Files ready";
+  const linkEntries = (order.results || [])
+    .map((entry, index) => {
+      const url = directDownloadUrl(entry);
+      if (!url) return null;
+      const name = entry.name || entry.id || `file ${index + 1}`;
+      const expires = entry.expires_at ? `Expires ${entry.expires_at}` : "Planet download link";
+      return { url, name, expires };
+    })
+    .filter(Boolean);
+  const links = linkEntries
+    .map((entry) => `
+      <a class="button compact direct-download" href="${escapeHtml(entry.url)}" target="_blank" rel="noopener noreferrer" title="${escapeHtml(entry.expires)}">
+        ${escapeHtml(entry.name)}
+      </a>
+    `);
+  const allLinks = linkEntries.map((entry) => entry.url);
+  const downloadAllButton = allLinks.length > 1
+    ? `
+      <button class="compact download-all" type="button" data-links="${escapeHtml(JSON.stringify(allLinks))}">
+        Download all
+      </button>
+    `
+    : "";
+  if (!links.length) {
+      return `
+      <div class="order-download-row">
+        <span class="hint">Order complete. Refresh in a moment if Planet has not returned file links yet.</span>
+      </div>
+      `;
+  }
   return `
     <div class="order-download-row">
-      <span class="hint">${escapeHtml(readyText)}</span>
-      <button class="download-order" data-order-id="${escapeHtml(order.order_id || "")}">Download files</button>
+      <span class="hint">${links.length} direct Planet file${links.length === 1 ? "" : "s"}</span>
+      <div class="direct-download-list">
+        ${downloadAllButton}
+        ${links.join("")}
+      </div>
     </div>
   `;
 }
 
-async function downloadOrderFiles(orderId, button) {
-  if (!orderId) return;
+function downloadAllPlanetLinks(button) {
+  let links = [];
+  try {
+    links = JSON.parse(button.dataset.links || "[]");
+  } catch {
+    links = [];
+  }
+  links = links.filter((url) => typeof url === "string" && url.startsWith("http"));
+  if (!links.length) return;
+
   button.disabled = true;
   const originalText = button.textContent;
-  button.textContent = "Downloading...";
-  const downloadDir = $("downloadFolder").value.trim();
-  log(`Downloading Planet order ${orderId} into ${downloadDir || "Planet_download"}. This may take a while.`);
-  try {
-    const result = await postJson("/api/order/download", {
-      order_id: orderId,
-      api_key: $("apiKey").value,
-      download_dir: downloadDir
-    });
-    button.textContent = "Downloaded";
-    log(`Downloaded ${result.file_count} file(s) to ${result.folder}.`);
-  } catch (error) {
-    button.disabled = false;
-    button.textContent = originalText;
-    throw error;
-  }
-}
-
-async function browseDownloadFolder() {
-  const result = await postJson("/api/download-folder/select", {
-    download_dir: $("downloadFolder").value
+  button.textContent = "Starting...";
+  links.forEach((url, index) => {
+    window.setTimeout(() => {
+      const link = document.createElement("a");
+      link.href = url;
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      if (index === links.length - 1) {
+        button.textContent = originalText;
+        button.disabled = false;
+      }
+    }, index * 400);
   });
-  if (!result.cancelled && result.folder) {
-    $("downloadFolder").value = result.folder;
-    log(`Download folder set to ${result.folder}.`);
-  }
+  log(`Started ${links.length} direct Planet download link(s). Your browser may ask to allow multiple downloads.`);
 }
 
 async function pollOrderStatus(orderId) {
@@ -723,11 +761,10 @@ function bindEvents() {
   $("refreshOrders").addEventListener("click", () => refreshOrdersList().catch((error) => {
     $("ordersList").textContent = error.message;
   }));
-  $("browseDownloadFolder").addEventListener("click", () => browseDownloadFolder().catch((error) => log(error.message)));
   $("ordersList").addEventListener("click", (event) => {
-    const button = event.target.closest(".download-order");
+    const button = event.target.closest(".download-all");
     if (!button) return;
-    downloadOrderFiles(button.dataset.orderId, button).catch((error) => log(error.message));
+    downloadAllPlanetLinks(button);
   });
   $("rejectUnkept").addEventListener("click", () => rejectUnkeptItems().catch((error) => log(error.message)));
   $("orderKept").addEventListener("click", () => openOrderModal().catch((error) => log(error.message)));

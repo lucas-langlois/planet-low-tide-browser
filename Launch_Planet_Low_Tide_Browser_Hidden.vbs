@@ -30,6 +30,7 @@ If Not fso.FileExists(appDir & "\tide\CSIRO_tidal_const_v12.nc") Then
 End If
 
 command = "cmd /c cd /d " & Chr(34) & appDir & Chr(34) & _
+          " && set PYTHONDONTWRITEBYTECODE=1" & _
           " && " & Chr(34) & pythonwPath & Chr(34) & " app\web_app.py" & _
           " >> " & Chr(34) & logPath & Chr(34) & " 2>&1"
 

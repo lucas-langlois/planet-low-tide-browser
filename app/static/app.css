@@ -118,7 +118,7 @@ input {
   margin-top: 8px;
   padding: 6px 8px;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 7px;
   border: 1px solid var(--line);
   border-radius: 6px;
@@ -129,6 +129,7 @@ input {
 }
 
 .api-status-icon {
+  flex: 0 0 auto;
   width: 16px;
   height: 16px;
   display: inline-grid;
@@ -136,6 +137,12 @@ input {
   border-radius: 999px;
   font-size: 12px;
   line-height: 1;
+}
+
+.api-status-text {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  line-height: 1.35;
 }
 
 .api-status[data-state="checking"] {
@@ -565,22 +572,8 @@ button.reject {
 .orders-actions {
   padding: 10px 16px;
   display: flex;
-  align-items: end;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
+  justify-content: flex-end;
   border-bottom: 1px solid var(--line);
-}
-
-.download-folder-field {
-  flex: 1 1 420px;
-  max-width: 720px;
-}
-
-.path-picker {
-  display: grid;
-  grid-template-columns: minmax(180px, 1fr) auto;
-  gap: 8px;
 }
 
 .orders-list {
@@ -625,6 +618,24 @@ button.reject {
   justify-content: space-between;
   gap: 10px;
   flex-wrap: wrap;
+}
+
+.direct-download-list {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.direct-download {
+  max-width: 260px;
+  overflow-wrap: anywhere;
+}
+
+.download-all {
+  background: #eef6ff;
+  border-color: #9fc5e8;
+  color: var(--blue);
 }
 
 .order-body {

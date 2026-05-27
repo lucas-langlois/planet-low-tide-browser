@@ -1,0 +1,22 @@
+.git/
+.venv/
+.conda/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+.env
+config.py
+
+downloads/
+Planet_download/
+orders/
+exports/
+logs/
+.server.pid
+upload_area_test/
+
+# Do not ignore tide/CSIRO_tidal_const_v12.nc here. The first Cloud Run proof
+# of concept bakes the local model file into the container image.

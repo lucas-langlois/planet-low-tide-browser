@@ -7,7 +7,6 @@ import json
 import math
 import os
 import re
-import subprocess
 import sys
 import tempfile
 import uuid
@@ -25,10 +24,12 @@ from flask import Flask, Response, jsonify, render_template, request, send_file,
 from PIL import Image, ImageDraw
 from requests.auth import HTTPBasicAuth
 
-APP_DIR = Path(__file__).resolve().parent
-ROOT_DIR = APP_DIR.parent
+IS_FROZEN = bool(getattr(sys, "frozen", False))
+ROOT_DIR = Path(sys.executable).resolve().parent if IS_FROZEN else Path(__file__).resolve().parent.parent
+APP_DIR = ROOT_DIR / "app"
 TIDE_DIR = ROOT_DIR / "tide"
-MODEL_PATH = TIDE_DIR / "CSIRO_tidal_const_v12.nc"
+MODEL_CANDIDATES = [TIDE_DIR / "CSIRO_tidal_const_v12.nc", ROOT_DIR / "CSIRO_tidal_const_v12.nc"]
+MODEL_PATH = next((path for path in MODEL_CANDIDATES if path.exists()), MODEL_CANDIDATES[0])
 LEAFLET_ASSETS = ROOT_DIR / "assets"
 
 ITEM_TYPE = "PSScene"
@@ -62,7 +63,7 @@ ORDER_ASSET_OPTIONS = {
     },
 }
 
-app = Flask(__name__)
+app = Flask(__name__, template_folder=str(APP_DIR / "templates"), static_folder=str(APP_DIR / "static"))
 app.secret_key = os.environ.get("PLANET_BROWSER_SECRET_KEY", uuid.uuid4().hex)
 
 APP_STATE: dict[str, dict[str, Any]] = {}
@@ -134,11 +135,29 @@ def planet_client_from_key(api_key: str, read_timeout_secs: float | None = None)
 
 
 def user_facing_error(exc: Exception) -> str:
+    if isinstance(exc, (requests.exceptions.ConnectionError, requests.exceptions.ProxyError, requests.exceptions.Timeout)):
+        return "Could not reach the Planet API. Check internet/proxy access, then try again."
+
     text = str(exc)
+    network_markers = (
+        "Failed to establish a new connection",
+        "Max retries exceeded",
+        "actively refused",
+        "Unable to connect to proxy",
+        "Read timed out",
+    )
+    if any(marker in text for marker in network_markers):
+        return "Could not reach the Planet API. Check internet/proxy access, then try again."
+    if "Please provide valid credentials" in text:
+        return "Planet rejected this API key. Check the key and try again."
+
     try:
         parsed = json.loads(text)
         if isinstance(parsed, dict) and parsed.get("message"):
-            return str(parsed["message"])
+            message = str(parsed["message"])
+            if "Please provide valid credentials" in message:
+                return "Planet rejected this API key. Check the key and try again."
+            return message
     except Exception:
         pass
     return text
@@ -1026,55 +1045,7 @@ def unique_path(folder: Path, filename: str) -> Path:
     raise RuntimeError(f"Could not make a unique filename for {filename}.")
 
 
-def resolve_download_root(download_dir: str | None = None) -> Path:
-    if not download_dir or not download_dir.strip():
-        return PLANET_DOWNLOAD_DIR
-    path = Path(download_dir.strip()).expanduser()
-    if not path.is_absolute():
-        path = ROOT_DIR / path
-    return path
-
-
-def folder_picker_python() -> Path:
-    python_path = Path(sys.executable)
-    if python_path.name.lower() == "pythonw.exe":
-        console_python = python_path.with_name("python.exe")
-        if console_python.exists():
-            return console_python
-    return python_path
-
-
-def choose_download_folder(initial_dir: Path) -> str:
-    script = r"""
-import json
-import sys
-import tkinter as tk
-from pathlib import Path
-from tkinter import filedialog
-
-initial = Path(sys.argv[1])
-root = tk.Tk()
-root.withdraw()
-root.attributes("-topmost", True)
-folder = filedialog.askdirectory(
-    initialdir=str(initial if initial.exists() else Path.cwd()),
-    title="Select Planet download folder",
-    mustexist=False,
-)
-root.destroy()
-print(json.dumps({"folder": folder or ""}))
-"""
-    result = subprocess.run(
-        [str(folder_picker_python()), "-c", script, str(initial_dir)],
-        capture_output=True,
-        text=True,
-        check=True,
-    )
-    payload = json.loads(result.stdout.strip() or "{}")
-    return str(payload.get("folder") or "")
-
-
-def download_order_files(api_key: str, order_id: str, download_dir: str | None = None) -> dict[str, Any]:
+def download_order_files(api_key: str, order_id: str) -> dict[str, Any]:
     order = fetch_order_detail(api_key, order_id)
     state = str(order.get("state", "")).lower()
     if state != "success":
@@ -1084,7 +1055,7 @@ def download_order_files(api_key: str, order_id: str, download_dir: str | None =
         raise ValueError("Planet has not returned download URLs for this order yet. Refresh orders in a moment.")
 
     order_name = safe_file_part(str(order.get("name") or order_id), order_id)
-    folder = resolve_download_root(download_dir) / order_name
+    folder = PLANET_DOWNLOAD_DIR / order_name
     folder.mkdir(parents=True, exist_ok=True)
 
     saved_files = []
@@ -1134,7 +1105,6 @@ def config():
             "model_exists": MODEL_PATH.exists(),
             "model_path": str(MODEL_PATH),
             "item_type": ITEM_TYPE,
-            "download_dir": str(PLANET_DOWNLOAD_DIR),
         }
     )
 
@@ -1240,7 +1210,8 @@ def api_validate_key():
     try:
         validate_planet_key(api_key)
     except Exception as exc:
-        return jsonify({"valid": False, "error": user_facing_error(exc)}), 401
+        status_code = 503 if isinstance(exc, requests.exceptions.RequestException) else 401
+        return jsonify({"valid": False, "error": user_facing_error(exc)}), status_code
 
     return jsonify({"valid": True, "masked_api_key": mask_api_key(api_key)})
 
@@ -1460,21 +1431,6 @@ def api_orders_list():
     return jsonify({"orders": orders})
 
 
-@app.post("/api/download-folder/select")
-def api_select_download_folder():
-    payload = request.get_json(force=True)
-    initial_dir = resolve_download_root(str(payload.get("download_dir") or ""))
-    try:
-        folder = choose_download_folder(initial_dir if initial_dir.exists() else PLANET_DOWNLOAD_DIR)
-    except Exception as exc:
-        return jsonify({"error": f"Could not open folder picker: {exc}"}), 500
-    if not folder:
-        return jsonify({"cancelled": True, "folder": ""})
-    state = get_state()
-    state["download_dir"] = folder
-    return jsonify({"cancelled": False, "folder": folder})
-
-
 @app.post("/api/order/download")
 def api_order_download():
     payload = request.get_json(force=True)
@@ -1486,21 +1442,22 @@ def api_order_download():
     if not api_key:
         return jsonify({"error": "Planet API key is required."}), 400
     try:
-        download_dir = str(payload.get("download_dir") or state.get("download_dir") or "")
-        result = download_order_files(api_key, order_id, download_dir)
+        result = download_order_files(api_key, order_id)
     except Exception as exc:
         return jsonify({"error": str(exc)}), 500
     state["api_key"] = api_key
-    if payload.get("download_dir"):
-        state["download_dir"] = str(payload.get("download_dir"))
     return jsonify(result)
 
 
 def main() -> None:
-    url = "http://127.0.0.1:5050"
-    if os.environ.get("PLANET_BROWSER_NO_OPEN") != "1":
+    cloud_run_service = bool(os.environ.get("K_SERVICE"))
+    host = "0.0.0.0" if cloud_run_service else os.environ.get("PLANET_BROWSER_HOST", "127.0.0.1")
+    port = int(os.environ.get("PORT", "8080" if cloud_run_service else "5050"))
+    browser_host = "127.0.0.1" if host == "0.0.0.0" else host
+    url = f"http://{browser_host}:{port}"
+    if not cloud_run_service and os.environ.get("PLANET_BROWSER_NO_OPEN") != "1":
         webbrowser.open(url)
-    app.run(host="127.0.0.1", port=5050, debug=False)
+    app.run(host=host, port=port, debug=False)
 
 
 if __name__ == "__main__":

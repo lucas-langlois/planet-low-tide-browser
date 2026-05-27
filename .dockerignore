@@ -1,0 +1,23 @@
+.git/
+.venv/
+.conda/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+.env
+config.py
+
+downloads/
+Planet_download/
+orders/
+exports/
+logs/
+.server.pid
+upload_area_test/
+
+# Keep tide/CSIRO_tidal_const_v12.nc in the Docker build context when present.
+# It is ignored by git, but the first Cloud Run proof of concept can bake the
+# local model file into the container image.
