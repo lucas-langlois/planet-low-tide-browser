@@ -15,6 +15,20 @@ if errorlevel 1 (
   exit /b 1
 )
 
+if not exist "tide\CSIRO_tidal_const_v12.nc" (
+  echo CSIRO tide model file is missing.
+  echo.
+  echo Required file:
+  echo   tide\CSIRO_tidal_const_v12.nc
+  echo.
+  echo Download it from:
+  echo   https://data.csiro.au/collection/csiro:45584
+  echo.
+  echo The .nc file is intentionally not stored in this repository.
+  pause
+  exit /b 1
+)
+
 if not exist ".venv\Scripts\python.exe" (
   echo Creating local Python environment in .venv ...
   py -3.11 -m venv ".venv"

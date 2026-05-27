@@ -6,17 +6,28 @@ exporting kept image IDs for QGIS or Planet API ordering.
 
 ## Quick Start
 
-1. Put `CSIRO_tidal_const_v12.nc` in `tide/`.
-2. Optional: copy `config.example.py` to `config.py` and add your Planet API key.
-3. Double-click `Launch_Planet_Low_Tide_Browser.bat`.
+1. Install Python 3.11 on the VM if it is not already available.
+2. Put `CSIRO_tidal_const_v12.nc` in the app's `tide/` folder.
+3. Optional: copy `config.example.py` to `config.py` and add your Planet API key.
+4. Double-click `Launch_Planet_Low_Tide_Browser.bat`.
 
 The launcher creates a local `.venv` environment on first run, then starts the
 app at <http://127.0.0.1:5050>.
 
+## Important Runtime Requirement
+
+This tool will not run tide predictions unless the CSIRO model file is present:
+
+- Required file: `CSIRO_tidal_const_v12.nc`
+- Download: <https://data.csiro.au/collection/csiro:45584>
+- Location for this app: `tide/CSIRO_tidal_const_v12.nc`
+- Note: the `.nc` file is intentionally not stored in this repository.
+
 ## Environment
 
-Planet MCP requires Python 3.11 or higher. Install Python 3.11 side-by-side with
-any existing Python versions and run this app with the Windows Python launcher:
+Planet MCP requires Python 3.11 or higher. On shared VMs, install Python 3.11
+side-by-side with any existing Python versions and run this app with the Windows
+Python launcher:
 
 ```cmd
 py -3.11 --version
@@ -24,6 +35,12 @@ py -3.11 --version
 
 It is fine if `python --version` points to another Python version. The launcher
 uses `py -3.11` explicitly so existing Python 3.10 workflows are not changed.
+
+Recommended Windows install command, when `winget` is available:
+
+```cmd
+winget install -e --id Python.Python.3.11 --scope user
+```
 
 The local `.venv` installs:
 
@@ -33,7 +50,7 @@ The local `.venv` installs:
 - `timezonefinder` for converting Planet UTC acquisition times to AOI-local time
 - raster/xarray/UTide dependencies required by `tide/Tide_predictions.py`
 
-Manual setup:
+Manual setup, if you do not use the launcher:
 
 ```powershell
 py -3.11 -m venv .venv
@@ -41,6 +58,9 @@ py -3.11 -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
 .\.venv\Scripts\python.exe app\web_app.py
 ```
+
+Do not commit `.venv`, `.conda`, `Planet_download`, or the CSIRO `.nc` model
+file. They are local runtime files and are ignored by git.
 
 ## Notes
 

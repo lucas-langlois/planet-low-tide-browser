@@ -21,3 +21,4 @@ orders/
 exports/
 logs/
 .server.pid
+upload_area_test/
