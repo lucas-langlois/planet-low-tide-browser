@@ -32,7 +32,8 @@ The repository includes a `Dockerfile`, `.gcloudignore`, and
 `deploy_cloud_run.ps1` for deploying the same app to Google Cloud Run.
 
 For people who only need to use the hosted app, see
-[`CLOUD_RUN_USER_GUIDE.md`](CLOUD_RUN_USER_GUIDE.md). Windows users can
+[`CLOUD_RUN_USER_GUIDE.md`](CLOUD_RUN_USER_GUIDE.md) or the printable
+[`CLOUD_RUN_USER_GUIDE.pdf`](CLOUD_RUN_USER_GUIDE.pdf). Windows users can
 double-click `Open_Planet_Low_Tide_Browser_Cloud.bat` to open the cloud app.
 
 Current test deployment:
