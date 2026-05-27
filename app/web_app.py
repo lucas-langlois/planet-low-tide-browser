@@ -32,6 +32,7 @@ LEAFLET_ASSETS = ROOT_DIR / "assets"
 ITEM_TYPE = "PSScene"
 PRODUCT_BUNDLE = "visual"
 PLANET_DATA_BASE_URL = "https://api.planet.com/data/v1"
+PLANET_ORDERS_BASE_URL = "https://api.planet.com/compute/ops/orders/v2"
 DEFAULT_TIMEZONE = "Australia/Brisbane"
 EDUCATION_MONTHLY_QUOTA_KM2 = 3000.0
 ORDER_ASSET_OPTIONS = {
@@ -907,9 +908,13 @@ def submit_order(
 
 
 def get_order_status(api_key: str, order_id: str) -> dict[str, Any]:
-    _Auth, _Planet, _Session, _data_filter, _build_request, _clip_tool, _product = import_planet_sdk()
-    pl = planet_client_from_key(api_key)
-    status = pl.orders.get_order(order_id)
+    response = requests.get(
+        f"{PLANET_ORDERS_BASE_URL}/{order_id}",
+        auth=HTTPBasicAuth(normalise_api_key(api_key), ""),
+        timeout=30,
+    )
+    raise_for_planet_response(response)
+    status = response.json()
     return {
         "order_id": order_id,
         "state": status.get("state", "unknown"),
@@ -917,6 +922,31 @@ def get_order_status(api_key: str, order_id: str) -> dict[str, Any]:
         "error": status.get("error"),
         "name": status.get("name"),
     }
+
+
+def simplify_order(order: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "order_id": order.get("id"),
+        "name": order.get("name", ""),
+        "state": order.get("state", "unknown"),
+        "created_on": order.get("created_on", ""),
+        "last_modified": order.get("last_modified", ""),
+        "source_type": order.get("source_type", ""),
+        "results": order.get("results", []),
+        "error": order.get("error"),
+    }
+
+
+def list_orders(api_key: str, limit: int = 25) -> list[dict[str, Any]]:
+    response = requests.get(
+        PLANET_ORDERS_BASE_URL,
+        params={"source_type": "scenes", "sort_by": "created_on DESC"},
+        auth=HTTPBasicAuth(normalise_api_key(api_key), ""),
+        timeout=30,
+    )
+    raise_for_planet_response(response)
+    body = response.json()
+    return [simplify_order(order) for order in body.get("orders", [])[: max(1, min(int(limit), 100))]]
 
 
 @app.get("/")
@@ -1179,7 +1209,7 @@ def api_order_estimate():
 def api_order():
     payload = request.get_json(force=True)
     state = get_state()
-    api_key = normalise_api_key(state.get("api_key")) or normalise_api_key(payload.get("api_key")) or load_default_api_key()
+    api_key = normalise_api_key(payload.get("api_key")) or normalise_api_key(state.get("api_key")) or load_default_api_key()
     if not api_key:
         return jsonify({"error": "Planet API key is required."}), 400
     item_ids = payload.get("item_ids") or []
@@ -1211,6 +1241,7 @@ def api_order():
         )
     except Exception as exc:
         return jsonify({"error": str(exc)}), 500
+    state["api_key"] = api_key
     state["last_order"] = result
     return jsonify(result)
 
@@ -1227,6 +1258,40 @@ def api_order_status(order_id: str):
         return jsonify({"error": str(exc)}), 500
     state["last_order"] = result
     return jsonify(result)
+
+
+@app.post("/api/order/status")
+def api_order_status_post():
+    payload = request.get_json(force=True)
+    order_id = str(payload.get("order_id") or "").strip()
+    if not order_id:
+        return jsonify({"error": "Order ID is required."}), 400
+    state = get_state()
+    api_key = normalise_api_key(payload.get("api_key")) or normalise_api_key(state.get("api_key")) or load_default_api_key()
+    if not api_key:
+        return jsonify({"error": "Planet API key is required."}), 400
+    try:
+        result = get_order_status(api_key, order_id)
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+    state["api_key"] = api_key
+    state["last_order"] = result
+    return jsonify(result)
+
+
+@app.post("/api/orders")
+def api_orders_list():
+    payload = request.get_json(force=True)
+    state = get_state()
+    api_key = normalise_api_key(payload.get("api_key")) or normalise_api_key(state.get("api_key")) or load_default_api_key()
+    if not api_key:
+        return jsonify({"error": "Planet API key is required."}), 400
+    try:
+        orders = list_orders(api_key, int(payload.get("limit", 25)))
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+    state["api_key"] = api_key
+    return jsonify({"orders": orders})
 
 
 def main() -> None:

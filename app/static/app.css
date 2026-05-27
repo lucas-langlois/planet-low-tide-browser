@@ -528,6 +528,15 @@ button.reject {
   box-shadow: 0 18px 50px rgba(23, 33, 43, 0.28);
 }
 
+.orders-modal {
+  width: min(880px, calc(100vw - 56px));
+  max-height: calc(100vh - 56px);
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  overflow: hidden;
+  box-shadow: 0 18px 50px rgba(23, 33, 43, 0.28);
+}
+
 .modal-head,
 .modal-actions {
   padding: 14px 16px;
@@ -542,6 +551,59 @@ button.reject {
   justify-content: flex-end;
   border-top: 1px solid var(--line);
   border-bottom: 0;
+}
+
+.orders-actions {
+  padding: 10px 16px;
+  display: flex;
+  justify-content: flex-end;
+  border-bottom: 1px solid var(--line);
+}
+
+.orders-list {
+  min-height: 0;
+  padding: 16px;
+  overflow: auto;
+  display: grid;
+  gap: 10px;
+}
+
+.order-card {
+  padding: 11px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #fff;
+}
+
+.order-card-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: start;
+}
+
+.order-card h3 {
+  overflow-wrap: anywhere;
+}
+
+.order-state {
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: #eef2f5;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.order-results {
+  margin-top: 8px;
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+}
+
+.order-results a {
+  overflow-wrap: anywhere;
 }
 
 .order-body {

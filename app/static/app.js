@@ -215,6 +215,7 @@ async function loadConfig() {
   if (config.has_api_key) {
     $("apiHint").textContent = `Using configured API key ${config.masked_api_key} unless you paste another one.`;
     setApiStatus("idle", "○", "Paste a key to validate it.");
+    $("showOrders").disabled = false;
   }
 }
 
@@ -223,6 +224,7 @@ function setApiStatus(state, icon, text) {
   status.dataset.state = state;
   status.querySelector(".api-status-icon").textContent = icon;
   status.querySelector(".api-status-text").textContent = text;
+  $("showOrders").disabled = state === "invalid" || state === "checking";
 }
 
 function scheduleApiValidation() {
@@ -233,6 +235,7 @@ function scheduleApiValidation() {
 
   if (!key) {
     setApiStatus("idle", "○", "Paste a key to validate it.");
+    $("showOrders").disabled = true;
     return;
   }
 
@@ -565,13 +568,28 @@ function orderResultLines(results) {
   });
 }
 
+function resultLinksHtml(results) {
+  const links = (results || [])
+    .map((entry) => {
+      const location = entry.location || entry.url || "";
+      if (!location) return "";
+      const name = entry.name || entry.id || "download";
+      return `<a href="${escapeHtml(location)}" target="_blank" rel="noreferrer">${escapeHtml(name)}</a>`;
+    })
+    .filter(Boolean);
+  return links.length ? `<div class="order-results">${links.join("")}</div>` : "";
+}
+
 async function pollOrderStatus(orderId) {
   let lastState = "";
   for (let attempt = 0; attempt < 180; attempt += 1) {
     if (attempt > 0) {
       await new Promise((resolve) => setTimeout(resolve, 10000));
     }
-    const status = await getJson(`/api/order/${encodeURIComponent(orderId)}/status`);
+    const status = await postJson("/api/order/status", {
+      order_id: orderId,
+      api_key: $("apiKey").value
+    });
     const state = status.state || "unknown";
     if (state !== lastState) {
       log(`Order ${orderId} state: ${state}.`);
@@ -588,6 +606,41 @@ async function pollOrderStatus(orderId) {
     }
   }
   log(`Order ${orderId} is still processing. You can check it later in Planet Orders.`);
+}
+
+function renderOrders(orders) {
+  if (!orders.length) {
+    $("ordersList").textContent = "No recent scene orders found for this API key.";
+    return;
+  }
+  $("ordersList").innerHTML = orders.map((order) => `
+    <article class="order-card">
+      <div class="order-card-head">
+        <div>
+          <h3>${escapeHtml(order.name || "Untitled order")}</h3>
+          <p class="hint">${escapeHtml(order.order_id || "")}</p>
+          <p class="hint">${escapeHtml(order.created_on || "")}</p>
+        </div>
+        <span class="order-state">${escapeHtml(order.state || "unknown")}</span>
+      </div>
+      ${resultLinksHtml(order.results)}
+    </article>
+  `).join("");
+}
+
+async function refreshOrdersList() {
+  $("ordersList").textContent = "Loading Planet orders...";
+  const data = await postJson("/api/orders", { api_key: $("apiKey").value, limit: 25 });
+  renderOrders(data.orders || []);
+}
+
+async function openOrdersModal() {
+  $("ordersModal").classList.remove("hidden");
+  await refreshOrdersList();
+}
+
+function closeOrdersModal() {
+  $("ordersModal").classList.add("hidden");
 }
 
 function bindEvents() {
@@ -627,6 +680,14 @@ function bindEvents() {
   $("apiKey").addEventListener("input", scheduleApiValidation);
   $("apiKey").addEventListener("paste", () => setTimeout(scheduleApiValidation, 0));
   $("copyKeptIds").addEventListener("click", () => copyKeptIds().catch((error) => log(error.message)));
+  $("showOrders").addEventListener("click", () => openOrdersModal().catch((error) => {
+    $("ordersList").textContent = error.message;
+    $("ordersModal").classList.remove("hidden");
+  }));
+  $("closeOrdersModal").addEventListener("click", closeOrdersModal);
+  $("refreshOrders").addEventListener("click", () => refreshOrdersList().catch((error) => {
+    $("ordersList").textContent = error.message;
+  }));
   $("rejectUnkept").addEventListener("click", () => rejectUnkeptItems().catch((error) => log(error.message)));
   $("orderKept").addEventListener("click", () => openOrderModal().catch((error) => log(error.message)));
   $("closeOrderModal").addEventListener("click", closeOrderModal);

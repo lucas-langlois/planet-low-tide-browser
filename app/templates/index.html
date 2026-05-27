@@ -27,6 +27,7 @@
           <span class="api-status-icon">○</span>
           <span class="api-status-text">Paste a key to validate it.</span>
         </div>
+        <button id="showOrders" class="primary" disabled>Show orders</button>
         <p class="hint" id="apiHint">A configured key can be loaded from environment or config.py.</p>
       </section>
 
@@ -217,6 +218,22 @@
         <button id="cancelOrderModal">Cancel</button>
         <button id="submitOrder" class="primary-action">Place order</button>
       </div>
+    </div>
+  </div>
+
+  <div id="ordersModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="ordersModalTitle">
+    <div class="orders-modal panel">
+      <div class="modal-head">
+        <div>
+          <h2 id="ordersModalTitle">Planet orders</h2>
+          <p class="hint">Recent scene orders for the current API key.</p>
+        </div>
+        <button id="closeOrdersModal" class="icon-button" aria-label="Close orders list">×</button>
+      </div>
+      <div class="orders-actions">
+        <button id="refreshOrders">Refresh</button>
+      </div>
+      <div id="ordersList" class="orders-list">No orders loaded.</div>
     </div>
   </div>
 
