@@ -93,7 +93,7 @@ if not exist "%SETUP_MARKER%" (
   echo   %PIP_LOG%
   echo.
   echo Planet Low Tide Browser pip install log > "%PIP_LOG%"
-  powershell -NoProfile -ExecutionPolicy Bypass -Command "& { & '%VENV_DIR%\Scripts\python.exe' -m ensurepip --upgrade 2>&1 | Tee-Object -FilePath '%PIP_LOG%' -Append; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE } }"
+  "%VENV_DIR%\Scripts\python.exe" -m ensurepip --upgrade
   if errorlevel 1 (
     echo.
     echo Failed to install pip into the virtual environment. See:
@@ -101,7 +101,7 @@ if not exist "%SETUP_MARKER%" (
     pause
     exit /b 1
   )
-  powershell -NoProfile -ExecutionPolicy Bypass -Command "& { & '%VENV_DIR%\Scripts\python.exe' -m pip install --upgrade pip 2>&1 | Tee-Object -FilePath '%PIP_LOG%' -Append; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE } }"
+  "%VENV_DIR%\Scripts\python.exe" -m pip install --upgrade pip --log "%PIP_LOG%"
   if errorlevel 1 (
     echo.
     echo Failed to upgrade pip. See:
@@ -109,7 +109,7 @@ if not exist "%SETUP_MARKER%" (
     pause
     exit /b 1
   )
-  powershell -NoProfile -ExecutionPolicy Bypass -Command "& { & '%VENV_DIR%\Scripts\python.exe' -m pip install -r requirements.txt 2>&1 | Tee-Object -FilePath '%PIP_LOG%' -Append; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE } }"
+  "%VENV_DIR%\Scripts\python.exe" -m pip install -r requirements.txt --log "%PIP_LOG%"
   if errorlevel 1 (
     echo.
     echo Failed to install packages.
