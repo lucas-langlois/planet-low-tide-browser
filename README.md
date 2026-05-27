@@ -4,6 +4,9 @@ Plain Python web UI for finding PlanetScope daily imagery over an AOI, sorting
 candidates by CSIRO-predicted tide height, visually reviewing scenes, and
 exporting kept image IDs for QGIS or Planet API ordering.
 
+The app can run either as a local Windows-friendly Flask app or as a low-cost
+Google Cloud Run service that scales to zero when idle.
+
 ## Quick Start
 
 1. Install Python 3.10 or newer.
@@ -22,6 +25,41 @@ If a shared conda environment has already been prepared at
 For daily use without a terminal window, double-click
 `Launch_Planet_Low_Tide_Browser_Hidden.vbs`; startup messages are written to
 `logs\hidden_launcher.log`.
+
+## Cloud Run
+
+The repository includes a `Dockerfile`, `.gcloudignore`, and
+`deploy_cloud_run.ps1` for deploying the same app to Google Cloud Run.
+
+Current test deployment:
+
+- Project ID: `planet-low-tide-browser-jcu`
+- Region: `australia-southeast1`
+- Service: `planet-low-tide-browser`
+- URL: <https://planet-low-tide-browser-1083872359479.australia-southeast1.run.app>
+
+The service is configured for low idle cost:
+
+- `min-instances=0`
+- `max-instances=1`
+- `1` CPU
+- `2Gi` memory
+- request timeout `3600` seconds
+
+Deploy from this folder:
+
+```powershell
+.\deploy_cloud_run.ps1 -ProjectId planet-low-tide-browser-jcu
+```
+
+The first test service is temporarily public. Do not configure a shared
+`PLANET_API_KEY` on a public service unless access has been locked down. Users
+can paste their own Planet API key into the app for searches and orders.
+
+The CSIRO tide model file is ignored by git but intentionally included in the
+Cloud Run source upload when it exists at `tide/CSIRO_tidal_const_v12.nc`.
+The container installs the Linux package `libexpat1`, which is required by the
+tide/scientific Python stack in the slim Python image.
 
 ## Important Runtime Requirement
 
@@ -123,7 +161,14 @@ The PlanetScope scene asset choices use these Orders API bundles:
 - `analytic_8b_sr_udm2`: 8-band surface reflectance with UDM2.
 
 Completed orders can be downloaded from the `Show orders` panel. Files are
-saved under `Planet_download/<order name>/`.
+shown as direct Planet result links, so downloads go from Planet to the user's
+browser rather than through the app server. If an order has multiple result
+files, use `Download all`; the browser may ask for permission to allow multiple
+downloads from the site.
+
+The backend still has a local `Planet_download/<order name>/` download helper
+for VM/local workflows, but the Cloud Run UI should prefer direct Planet links
+because Cloud Run's local filesystem is temporary.
 
 The estimate reports item count, expected output image count, AOI area,
 AOI-intersection area, and processed-area estimate. The app also compares the
