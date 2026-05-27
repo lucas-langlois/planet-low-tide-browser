@@ -71,11 +71,10 @@ The order panel is modelled on Planet Explorer's basic order flow:
 6. Review the estimate before clicking `Place order`.
 
 The estimate reports item count, expected output image count, AOI area,
-AOI-intersection area, processed-area estimate, and a rough uncompressed raster
-payload estimate. The app also compares the processed-area estimate against the
-standard 3,000 km²/month education-account quota used by this project. Planet's
-Orders API makes the final quota and file-size decision when the order runs, so
-the estimate is a guardrail rather than a guarantee.
+AOI-intersection area, and processed-area estimate. The app also compares the
+processed-area estimate against the standard 3,000 km²/month education-account
+quota used by this project. Planet's Orders API makes the final quota decision
+when the order runs, so the estimate is a guardrail rather than a guarantee.
 
 ## AOI Tide Prediction
 

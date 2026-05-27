@@ -821,7 +821,6 @@ def estimate_order(item_ids: list[str], items: list[dict[str, Any]], aoi: dict[s
 
     output_images = 1 if composite and item_count else item_count
     pixel_area_m2 = 3.0 * 3.0
-    estimated_bytes = processed_area * 1_000_000.0 / pixel_area_m2 * asset["bands"] * asset["bytes_per_sample"]
     quota_percent = processed_area / EDUCATION_MONTHLY_QUOTA_KM2 * 100.0 if EDUCATION_MONTHLY_QUOTA_KM2 else 0.0
     warnings = []
     if item_count > 500:
@@ -842,12 +841,11 @@ def estimate_order(item_ids: list[str], items: list[dict[str, Any]], aoi: dict[s
         "output_images": output_images,
         "asset_label": asset["label"],
         "product_bundle": asset["product_bundle"],
-        "aoi_area_km2": round(aoi_area, 3),
-        "estimated_aoi_intersection_km2": round(intersection_area, 3),
-        "estimated_processed_area_km2": round(processed_area, 3),
+        "aoi_area_km2": round(aoi_area),
+        "estimated_aoi_intersection_km2": round(intersection_area),
+        "estimated_processed_area_km2": round(processed_area),
         "education_monthly_quota_km2": EDUCATION_MONTHLY_QUOTA_KM2,
         "education_quota_percent": round(quota_percent, 1),
-        "estimated_raster_gb": round(estimated_bytes / 1_000_000_000.0, 3),
         "tools": {
             "clip_to_aoi": clip_to_aoi,
             "composite": composite,
