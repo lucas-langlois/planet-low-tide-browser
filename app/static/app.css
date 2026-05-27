@@ -222,7 +222,7 @@ button.primary {
 .workspace {
   min-width: 0;
   display: grid;
-  grid-template-rows: 42vh minmax(0, 1fr);
+  grid-template-rows: 42vh auto minmax(0, 1fr);
   gap: 14px;
   padding: 14px;
 }
@@ -261,6 +261,39 @@ button.primary {
 .basemap-control .basemap-btn.active {
   background: var(--blue);
   color: #fff;
+}
+
+.map-tools {
+  min-height: 46px;
+  padding: 9px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.map-tools strong {
+  display: block;
+  font-size: 13px;
+}
+
+#mapOverlayLabel {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.range-row {
+  min-width: 170px;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.range-row input {
+  height: auto;
+  padding: 0;
 }
 
 .review-grid {

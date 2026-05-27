@@ -772,6 +772,30 @@ def api_preview(item_id: str):
     return send_file(buf, mimetype="image/png")
 
 
+@app.get("/planet-tiles/<item_type>/<item_id>/<int:zoom>/<int:x>/<int:y>.png")
+def planet_tile_proxy(item_type: str, item_id: str, zoom: int, x: int, y: int):
+    state = get_state()
+    api_key = normalise_api_key(state.get("api_key"))
+    if not api_key:
+        return Response("Planet API key missing.", status=401)
+
+    tile_url = f"https://tiles0.planet.com/data/v1/{item_type}/{item_id}/{zoom}/{x}/{y}.png"
+    try:
+        response = requests.get(tile_url, auth=HTTPBasicAuth(api_key, ""), timeout=15)
+    except Exception as exc:
+        return Response(str(exc), status=502)
+
+    if response.status_code != 200:
+        return Response(response.content, status=response.status_code, content_type=response.headers.get("content-type"))
+
+    return Response(
+        response.content,
+        status=200,
+        content_type=response.headers.get("content-type", "image/png"),
+        headers={"Cache-Control": "private, max-age=3600"},
+    )
+
+
 @app.get("/export/kept.csv")
 def export_kept_csv():
     state = get_state()

@@ -3,6 +3,7 @@ let aoiLayer;
 let drawLayer;
 let satelliteLayer;
 let streetLayer;
+let planetOverlayLayer = null;
 let drawing = false;
 let drawPoints = [];
 let currentAoi = null;
@@ -92,6 +93,43 @@ function setAoi(aoi) {
     style: { color: "#f05a28", weight: 3, fillOpacity: 0.12 }
   }).addTo(map);
   map.fitBounds(aoiLayer.getBounds(), { padding: [30, 30] });
+}
+
+function updatePlanetOverlay() {
+  const item = selectedItem();
+  const showOverlay = $("showPlanetOverlay")?.checked ?? true;
+
+  if (planetOverlayLayer) {
+    map.removeLayer(planetOverlayLayer);
+    planetOverlayLayer = null;
+  }
+
+  if (!item || !showOverlay) {
+    $("mapOverlayLabel").textContent = item ? "Selected image hidden." : "Select a candidate to show its preview on the map.";
+    return;
+  }
+
+  const itemType = item.item_type || "PSScene";
+  const opacity = Number($("planetOpacity")?.value ?? 70) / 100;
+  planetOverlayLayer = L.tileLayer(
+    `/planet-tiles/${encodeURIComponent(itemType)}/${encodeURIComponent(item.id)}/{z}/{x}/{y}.png`,
+    {
+      maxZoom: 19,
+      opacity,
+      attribution: "Planet preview"
+    }
+  ).addTo(map);
+
+  if (aoiLayer) {
+    aoiLayer.bringToFront();
+    map.fitBounds(aoiLayer.getBounds(), { padding: [30, 30] });
+  }
+  $("mapOverlayLabel").textContent = `${item.id} on map`;
+}
+
+function setPlanetOverlayOpacity() {
+  if (!planetOverlayLayer) return;
+  planetOverlayLayer.setOpacity(Number($("planetOpacity").value) / 100);
 }
 
 function drawAoiPreview() {
@@ -256,6 +294,7 @@ async function queryPlanet() {
     selectedId = results.length ? results[0].id : null;
     renderResults();
     updatePreview();
+    updatePlanetOverlay();
     $("resultSummary").textContent = `${results.length} candidates. Tide method: ${data.tide.method}, faces: ${data.tide.n_faces}.`;
     log(`Search complete: ${results.length} candidates. Planet auth: ${data.key_source} ${data.masked_api_key}.`);
   } catch (error) {
@@ -286,6 +325,7 @@ function renderResults() {
       selectedId = item.id;
       renderResults();
       updatePreview();
+      updatePlanetOverlay();
     });
     body.appendChild(row);
   });
@@ -366,6 +406,8 @@ function bindEvents() {
   $("createSquareAoi").addEventListener("click", () => createSquareAoi().catch((error) => log(error.message)));
   $("uploadAoi").addEventListener("click", () => uploadAoi().catch((error) => log(error.message)));
   $("searchPlanet").addEventListener("click", queryPlanet);
+  $("showPlanetOverlay").addEventListener("change", updatePlanetOverlay);
+  $("planetOpacity").addEventListener("input", setPlanetOverlayOpacity);
   $("apiKey").addEventListener("input", scheduleApiValidation);
   $("apiKey").addEventListener("paste", () => setTimeout(scheduleApiValidation, 0));
   $("previewAoi").addEventListener("click", () => {

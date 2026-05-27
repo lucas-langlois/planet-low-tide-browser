@@ -96,6 +96,19 @@
 
     <section class="workspace">
       <div id="map"></div>
+      <div class="map-tools panel">
+        <div>
+          <strong>Planet overlay</strong>
+          <span id="mapOverlayLabel">Select a candidate to show its preview on the map.</span>
+        </div>
+        <label class="check-row">
+          <input id="showPlanetOverlay" type="checkbox" checked>
+          Show selected image
+        </label>
+        <label class="range-row">Opacity
+          <input id="planetOpacity" type="range" min="0" max="100" value="70">
+        </label>
+      </div>
 
       <div class="review-grid">
         <section class="panel candidates">
