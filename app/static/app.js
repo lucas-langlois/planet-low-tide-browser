@@ -354,6 +354,10 @@ function updateDecisionSummary() {
   $("decisionSummary").textContent = `${counts.keep} kept, ${counts.reject} rejected, ${counts.pending} pending.`;
 }
 
+function keptItemIds() {
+  return results.filter((item) => statuses[item.id] === "keep").map((item) => item.id);
+}
+
 async function setItemStatus(itemId, status) {
   await postJson("/api/status", { item_id: itemId, status });
   statuses[itemId] = status;
@@ -373,6 +377,33 @@ async function rejectUnkeptItems() {
   renderResults();
   updatePlanetOverlay();
   log(`${unkeptIds.length} unkept item(s) marked reject.`);
+}
+
+async function copyKeptIds() {
+  const ids = keptItemIds();
+  if (!ids.length) {
+    log("No kept item IDs to copy.");
+    return;
+  }
+  const text = ids.join(",");
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+    } else {
+      const textArea = document.createElement("textarea");
+      textArea.value = text;
+      textArea.setAttribute("readonly", "");
+      textArea.style.position = "fixed";
+      textArea.style.left = "-9999px";
+      document.body.appendChild(textArea);
+      textArea.select();
+      document.execCommand("copy");
+      textArea.remove();
+    }
+    log(`Copied ${ids.length} kept item ID(s) for QGIS Planet Explorer.`);
+  } catch (error) {
+    log(`Copy failed. Kept item IDs: ${text}`);
+  }
 }
 
 async function orderItems(itemIds) {
@@ -429,10 +460,10 @@ function bindEvents() {
   $("planetOpacity").addEventListener("input", setPlanetOverlayOpacity);
   $("apiKey").addEventListener("input", scheduleApiValidation);
   $("apiKey").addEventListener("paste", () => setTimeout(scheduleApiValidation, 0));
+  $("copyKeptIds").addEventListener("click", () => copyKeptIds().catch((error) => log(error.message)));
   $("rejectUnkept").addEventListener("click", () => rejectUnkeptItems().catch((error) => log(error.message)));
   $("orderKept").addEventListener("click", () => {
-    const keptIds = Object.entries(statuses).filter((entry) => entry[1] === "keep").map((entry) => entry[0]);
-    orderItems(keptIds).catch((error) => log(error.message));
+    orderItems(keptItemIds()).catch((error) => log(error.message));
   });
 }
 
