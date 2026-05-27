@@ -213,9 +213,7 @@ async function loadConfig() {
     ? `CSIRO model found. Item type: ${config.item_type}`
     : `CSIRO model missing: ${config.model_path}`;
   if (config.has_api_key) {
-    $("apiHint").textContent = `Using configured API key ${config.masked_api_key} unless you paste another one.`;
     setApiStatus("idle", "○", "Paste a key to validate it.");
-    $("showOrders").disabled = false;
   }
 }
 
@@ -224,7 +222,7 @@ function setApiStatus(state, icon, text) {
   status.dataset.state = state;
   status.querySelector(".api-status-icon").textContent = icon;
   status.querySelector(".api-status-text").textContent = text;
-  $("showOrders").disabled = state === "invalid" || state === "checking";
+  $("showOrders").disabled = state !== "valid";
 }
 
 function scheduleApiValidation() {
