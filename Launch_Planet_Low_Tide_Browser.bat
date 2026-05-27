@@ -4,6 +4,8 @@ cd /d "%~dp0"
 set PYTHONDONTWRITEBYTECODE=1
 set "PYTHON_CMD="
 set "VENV_DIR=.venv"
+set "LOG_DIR=logs"
+set "PIP_LOG=%LOG_DIR%\pip_install.log"
 
 echo Planet Low Tide Browser launcher
 echo.
@@ -59,6 +61,8 @@ if not exist "tide\CSIRO_tidal_const_v12.nc" (
 echo Found tide\CSIRO_tidal_const_v12.nc
 echo.
 
+if not exist "%LOG_DIR%" mkdir "%LOG_DIR%"
+
 if not exist "%VENV_DIR%\Scripts\python.exe" (
   echo [3/5] Creating local Python environment in:
   echo   %VENV_DIR%
@@ -78,13 +82,24 @@ if not exist "%VENV_DIR%\Scripts\python.exe" (
   echo.
   echo [4/5] Installing app packages ...
   echo This is usually the slowest step on first run.
+  echo Pip output is shown below and saved to:
+  echo   %PIP_LOG%
   echo.
-  "%VENV_DIR%\Scripts\python.exe" -m pip install --upgrade pip
-  "%VENV_DIR%\Scripts\python.exe" -m pip install -r requirements.txt
+  powershell -NoProfile -ExecutionPolicy Bypass -Command "& { & '%VENV_DIR%\Scripts\python.exe' -m pip install --upgrade pip 2>&1 | Tee-Object -FilePath '%PIP_LOG%' -Append; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE } }"
+  if errorlevel 1 (
+    echo.
+    echo Failed to upgrade pip. See:
+    echo   %PIP_LOG%
+    pause
+    exit /b 1
+  )
+  powershell -NoProfile -ExecutionPolicy Bypass -Command "& { & '%VENV_DIR%\Scripts\python.exe' -m pip install -r requirements.txt 2>&1 | Tee-Object -FilePath '%PIP_LOG%' -Append; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE } }"
   if errorlevel 1 (
     echo.
     echo Failed to install packages.
     echo Check that this VM can access PyPI, or ask IT to allow package installs.
+    echo See:
+    echo   %PIP_LOG%
     pause
     exit /b 1
   )
