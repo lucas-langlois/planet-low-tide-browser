@@ -165,7 +165,7 @@ Current test service:
 
 - Service name: `planet-low-tide-browser`
 - Region: `australia-southeast1`
-- URL: <https://planet-low-tide-browser-bab46xsyua-ts.a.run.app>
+- URL: <https://planet-low-tide-browser-1083872359479.australia-southeast1.run.app>
 - Access: temporarily public through `allUsers` on `roles/run.invoker`
 
 Initial command shape:
@@ -275,3 +275,25 @@ Use this section to record decisions and changes as the migration progresses.
   `planet-low-tide-browser-jcu`. `gcloud` warned that the local Application
   Default Credentials quota project is still different; this may only matter if
   local ADC-based tools hit quota issues.
+- 2026-05-29: Added kept-AOI coverage feedback for large AOIs. The review
+  summary now reports whether the union of kept scene footprints covers the
+  full AOI.
+- 2026-05-29: Added `Gap only` review filtering so users can focus on scenes
+  that still cover uncovered AOI areas.
+- 2026-05-29: Added `Kept only` review filtering for second-pass review of
+  retained scenes.
+- 2026-05-29: Replaced the keep checkbox with a pending/keep/reject decision
+  control. Rejected scenes are removed from the active review list.
+- 2026-05-29: Added `Show kept images` map overlay support using real Planet
+  preview tiles, with per-scene toggles and `All` / `None` controls in the
+  Leaflet layer panel.
+- 2026-05-29: Kept the order flow as a single Planet order clipped to the
+  overall AOI. Scene-specific clip geometry was considered but deferred because
+  Planet Orders applies the clip tool at order level and per-scene clips would
+  require multiple orders.
+- 2026-05-29: Built and pushed Docker image
+  `australia-southeast1-docker.pkg.dev/planet-low-tide-browser-jcu/cloud-run-source-deploy/planet-low-tide-browser:20260529-review-filters`.
+- 2026-05-29: Deployed Cloud Run revision
+  `planet-low-tide-browser-00007-2xd` and routed 100% of traffic to it.
+  Verified `/api/config` on the live service reports `model_exists: true` and
+  no shared Planet API key.

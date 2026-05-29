@@ -4,7 +4,8 @@ let drawLayer;
 let satelliteLayer;
 let streetLayer;
 let planetOverlayLayer = null;
-let keptFootprintLayer = null;
+let keptImageLayers = new Map();
+let keptImageControl = null;
 let drawing = false;
 let drawPoints = [];
 let currentAoi = null;
@@ -14,6 +15,8 @@ let selectedId = null;
 let apiValidationTimer = null;
 let apiValidationRequestId = 0;
 let coverageSummary = null;
+let gapFilterEnabled = false;
+let keptFilterEnabled = false;
 
 const $ = (id) => document.getElementById(id);
 
@@ -103,7 +106,7 @@ function setAoi(aoi, summary = null) {
   currentAoi = aoi;
   if (aoiLayer) map.removeLayer(aoiLayer);
   if (drawLayer) drawLayer.clearLayers();
-  updateKeptFootprints();
+  updateKeptImageLayers();
   aoiLayer = L.geoJSON(aoi, {
     style: { color: "#f05a28", weight: 3, fillOpacity: 0.12 }
   }).addTo(map);
@@ -138,7 +141,6 @@ function updatePlanetOverlay() {
 
   if (aoiLayer) {
     aoiLayer.bringToFront();
-    map.fitBounds(aoiLayer.getBounds(), { padding: [30, 30] });
   }
   $("mapOverlayLabel").textContent = `${item.id} on map`;
 }
@@ -147,68 +149,146 @@ function keptItems() {
   return results.filter((item) => statuses[item.id] === "keep" && item.geometry);
 }
 
-function keptFootprintStyle(feature) {
-  const palette = ["#00a6d6", "#7b61ff", "#00a878", "#d16b00", "#c33c54", "#1f78b4"];
-  const index = Number(feature?.properties?.kept_index || 0);
-  const color = palette[index % palette.length];
+function removeKeptImageLayers() {
+  keptImageLayers.forEach((layer) => {
+    if (map.hasLayer(layer)) map.removeLayer(layer);
+  });
+  keptImageLayers.clear();
+  if (keptImageControl) {
+    map.removeControl(keptImageControl);
+    keptImageControl = null;
+  }
+}
+
+function shortSceneId(id) {
+  const text = String(id || "");
+  const parts = text.split("_");
+  if (parts.length >= 4) {
+    return `${parts[0]} ${parts[1].slice(-4)} ${parts[3]}`;
+  }
+  return text.length > 24 ? `${text.slice(0, 21)}...` : text;
+}
+
+function keptLayerMeta(item, index) {
   return {
-    color,
-    weight: 2,
-    opacity: 0.95,
-    fillColor: color,
-    fillOpacity: 0.16,
+    id: item.id,
+    label: `${index + 1}. ${shortSceneId(item.id)}`,
+    tide: item.tide_height == null ? "" : `${Number(item.tide_height).toFixed(2)} m`,
+    coverage: item.aoi_coverage_percent == null ? "" : `${Number(item.aoi_coverage_percent).toFixed(0)}%`,
   };
 }
 
-function updateKeptFootprints() {
-  if (keptFootprintLayer) {
-    map.removeLayer(keptFootprintLayer);
-    keptFootprintLayer = null;
-  }
+function addKeptImageControl(kept) {
+  const KeptImageControl = L.Control.extend({
+    options: { position: "topleft" },
+    onAdd: () => {
+      const container = L.DomUtil.create("div", "kept-layer-control");
+      const rows = kept.map((item, index) => {
+        const meta = keptLayerMeta(item, index);
+        return `
+          <label class="kept-layer-row" title="${escapeHtml(item.id)}">
+            <input type="checkbox" data-item-id="${escapeHtml(item.id)}" checked>
+            <span class="kept-layer-name">${escapeHtml(meta.label)}</span>
+            <span class="kept-layer-meta">${escapeHtml([meta.tide, meta.coverage].filter(Boolean).join(" | "))}</span>
+          </label>
+        `;
+      }).join("");
+      container.innerHTML = `
+        <button type="button" class="kept-layer-head" aria-expanded="true">
+          <span>Kept images</span>
+          <strong>${kept.length}</strong>
+        </button>
+        <div class="kept-layer-body">
+          <div class="kept-layer-actions">
+            <button type="button" data-action="all">All</button>
+            <button type="button" data-action="none">None</button>
+          </div>
+          ${rows}
+        </div>
+      `;
+      L.DomEvent.disableClickPropagation(container);
+      L.DomEvent.disableScrollPropagation(container);
 
-  const label = $("keptFootprintLabel");
-  const showLayer = $("showKeptFootprints")?.checked ?? false;
+      const head = container.querySelector(".kept-layer-head");
+      const body = container.querySelector(".kept-layer-body");
+      head.addEventListener("click", () => {
+        const collapsed = container.classList.toggle("collapsed");
+        head.setAttribute("aria-expanded", String(!collapsed));
+        body.hidden = collapsed;
+      });
+
+      container.querySelectorAll("input[data-item-id]").forEach((input) => {
+        input.addEventListener("change", () => {
+          const layer = keptImageLayers.get(input.dataset.itemId);
+          if (!layer) return;
+          if (input.checked) {
+            layer.addTo(map);
+            if (aoiLayer) aoiLayer.bringToFront();
+          } else if (map.hasLayer(layer)) {
+            map.removeLayer(layer);
+          }
+        });
+      });
+      container.querySelectorAll(".kept-layer-actions button").forEach((button) => {
+        button.addEventListener("click", () => {
+          const show = button.dataset.action === "all";
+          container.querySelectorAll("input[data-item-id]").forEach((input) => {
+            input.checked = show;
+            const layer = keptImageLayers.get(input.dataset.itemId);
+            if (!layer) return;
+            if (show) {
+              layer.addTo(map);
+            } else if (map.hasLayer(layer)) {
+              map.removeLayer(layer);
+            }
+          });
+          if (show && aoiLayer) aoiLayer.bringToFront();
+        });
+      });
+      return container;
+    },
+  });
+
+  keptImageControl = new KeptImageControl();
+  keptImageControl.addTo(map);
+}
+
+function updateKeptImageLayers() {
+  removeKeptImageLayers();
+
+  const label = $("keptImageLayerLabel");
+  const showLayer = $("showKeptImages")?.checked ?? false;
   const kept = keptItems();
   if (label) {
-    label.textContent = kept.length ? `${kept.length} kept footprint${kept.length === 1 ? "" : "s"}` : "No kept scenes yet.";
+    label.textContent = kept.length ? `${kept.length} kept image${kept.length === 1 ? "" : "s"}` : "No kept scenes yet.";
   }
   if (!showLayer || !kept.length) {
     return;
   }
 
-  keptFootprintLayer = L.geoJSON(
-    {
-      type: "FeatureCollection",
-      features: kept.map((item, index) => ({
-        type: "Feature",
-        geometry: item.geometry,
-        properties: {
-          id: item.id,
-          kept_index: index,
-          aoi_coverage_percent: item.aoi_coverage_percent,
-          tide_height: item.tide_height,
-        },
-      })),
-    },
-    {
-      style: keptFootprintStyle,
-      onEachFeature: (feature, layer) => {
-        const coverage = feature.properties.aoi_coverage_percent == null
-          ? ""
-          : `AOI ${Number(feature.properties.aoi_coverage_percent).toFixed(1)}%`;
-        const tide = feature.properties.tide_height == null ? "" : `Tide ${feature.properties.tide_height} m`;
-        layer.bindTooltip([feature.properties.id, coverage, tide].filter(Boolean).join(" | "));
-      },
-    }
-  ).addTo(map);
+  const opacity = Number($("planetOpacity")?.value ?? 70) / 100;
+  kept.forEach((item, index) => {
+    const itemType = item.item_type || "PSScene";
+    const layer = L.tileLayer(
+      `/planet-tiles/${encodeURIComponent(itemType)}/${encodeURIComponent(item.id)}/{z}/{x}/{y}.png`,
+      {
+        maxZoom: 19,
+        opacity,
+        attribution: "Planet preview",
+      }
+    );
+    keptImageLayers.set(item.id, layer);
+    layer.addTo(map);
+  });
 
-  keptFootprintLayer.bringToFront();
+  addKeptImageControl(kept);
   if (aoiLayer) aoiLayer.bringToFront();
 }
 
 function setPlanetOverlayOpacity() {
-  if (!planetOverlayLayer) return;
-  planetOverlayLayer.setOpacity(Number($("planetOpacity").value) / 100);
+  const opacity = Number($("planetOpacity").value) / 100;
+  if (planetOverlayLayer) planetOverlayLayer.setOpacity(opacity);
+  keptImageLayers.forEach((layer) => layer.setOpacity(opacity));
 }
 
 function drawAoiPreview() {
@@ -379,6 +459,8 @@ async function queryPlanet() {
     results = data.items || [];
     statuses = Object.fromEntries(results.map((item) => [item.id, "pending"]));
     coverageSummary = data.coverage || null;
+    gapFilterEnabled = false;
+    keptFilterEnabled = false;
     selectedId = results.length ? results[0].id : null;
     renderResults();
     updatePlanetOverlay();
@@ -397,18 +479,20 @@ async function queryPlanet() {
 function renderResults() {
   const body = $("resultsBody");
   body.innerHTML = "";
-  results.forEach((item, index) => {
+  const visibleResults = filteredResults();
+  visibleResults.forEach((item) => {
+    const index = results.findIndex((candidate) => candidate.id === item.id);
     const status = statuses[item.id] || "pending";
     const row = document.createElement("tr");
     row.classList.toggle("selected", item.id === selectedId);
     row.innerHTML = `
       <td>${index + 1}</td>
       <td class="decision-cell">
-        <label class="keep-toggle">
-          <input type="checkbox" data-item-id="${item.id}" ${status === "keep" ? "checked" : ""}>
-          Keep
-        </label>
-        <span class="pill ${status}">${status}</span>
+        <div class="decision-switch" role="group" aria-label="Scene decision">
+          <button type="button" class="decision-btn ${status === "pending" ? "active pending" : ""}" data-item-id="${item.id}" data-status="pending">?</button>
+          <button type="button" class="decision-btn ${status === "keep" ? "active keep" : ""}" data-item-id="${item.id}" data-status="keep">Keep</button>
+          <button type="button" class="decision-btn ${status === "reject" ? "active reject" : ""}" data-item-id="${item.id}" data-status="reject">Reject</button>
+        </div>
       </td>
       <td class="item-id">${item.id}</td>
       <td title="UTC: ${(item.acquired_utc || item.acquired || "").replace("T", " ")}">${item.acquired_local || (item.acquired || "").replace("T", " ").slice(0, 16)}</td>
@@ -416,10 +500,11 @@ function renderResults() {
       <td>${item.cloud_cover ?? ""}</td>
       <td>${item.aoi_coverage_percent == null ? "" : item.aoi_coverage_percent.toFixed(1)}</td>
     `;
-    row.querySelector("input").addEventListener("click", (event) => event.stopPropagation());
-    row.querySelector("input").addEventListener("change", (event) => {
-      const nextStatus = event.target.checked ? "keep" : "pending";
-      setItemStatus(item.id, nextStatus).catch((error) => log(error.message));
+    row.querySelectorAll(".decision-btn").forEach((button) => {
+      button.addEventListener("click", (event) => {
+        event.stopPropagation();
+        setItemStatus(button.dataset.itemId, button.dataset.status).catch((error) => log(error.message));
+      });
     });
     row.addEventListener("click", () => {
       selectedId = item.id;
@@ -428,7 +513,35 @@ function renderResults() {
     });
     body.appendChild(row);
   });
+  if (!visibleResults.length && results.length) {
+    const row = document.createElement("tr");
+    row.innerHTML = `<td colspan="7" class="empty-row">${gapFilterEnabled ? "No remaining candidates cover the uncovered AOI." : "No candidates to show."}</td>`;
+    body.appendChild(row);
+  }
   updateDecisionSummary();
+}
+
+function gapCandidateIds() {
+  return new Set(coverageSummary?.uncovered_candidate_ids || []);
+}
+
+function filteredResults() {
+  if (keptFilterEnabled) return results.filter((item) => statuses[item.id] === "keep");
+  if (!gapFilterEnabled) return results.filter((item) => statuses[item.id] !== "reject");
+  const gapIds = gapCandidateIds();
+  return results.filter((item) => gapIds.has(item.id) && statuses[item.id] !== "reject");
+}
+
+function syncSelectedToVisible() {
+  const visibleResults = filteredResults();
+  if (!visibleResults.length) {
+    selectedId = null;
+    return null;
+  }
+  if (!visibleResults.some((item) => item.id === selectedId)) {
+    selectedId = visibleResults[0].id;
+  }
+  return selectedItem();
 }
 
 function selectedItem() {
@@ -445,7 +558,8 @@ function updateDecisionSummary() {
   $("decisionSummary").textContent = coverageText ? `${decisionText} ${coverageText}` : decisionText;
   $("decisionSummary").classList.toggle("coverage-complete", Boolean(coverageSummary?.complete));
   $("decisionSummary").classList.toggle("coverage-incomplete", Boolean(coverageSummary && !coverageSummary.complete));
-  updateKeptFootprints();
+  updateTableFilterButtons();
+  updateKeptImageLayers();
 }
 
 function keptCoverageText() {
@@ -463,6 +577,34 @@ function keptCoverageText() {
 
 function keptItemIds() {
   return results.filter((item) => statuses[item.id] === "keep").map((item) => item.id);
+}
+
+function updateTableFilterButtons() {
+  const gapButton = $("filterUncovered");
+  const keptButton = $("filterKept");
+  const label = $("filterUncoveredLabel");
+  if (!gapButton || !keptButton || !label) return;
+
+  const count = coverageSummary?.uncovered_candidate_ids?.length || 0;
+  const hasResults = results.length > 0;
+  const keptCount = keptItemIds().length;
+  gapButton.disabled = !hasResults || !coverageSummary || keptFilterEnabled || (Boolean(coverageSummary.complete) && !gapFilterEnabled);
+  keptButton.disabled = !hasResults || gapFilterEnabled || (!keptCount && !keptFilterEnabled);
+  gapButton.classList.toggle("active", gapFilterEnabled);
+  keptButton.classList.toggle("active", keptFilterEnabled);
+  gapButton.textContent = gapFilterEnabled ? "Show all" : "Gap only";
+  keptButton.textContent = keptFilterEnabled ? "Show all" : "Kept only";
+  if (!hasResults) {
+    label.textContent = "Run a search first.";
+  } else if (keptFilterEnabled) {
+    label.textContent = `${filteredResults().length} kept scene${filteredResults().length === 1 ? "" : "s"} shown.`;
+  } else if (coverageSummary?.complete) {
+    label.textContent = "AOI covered.";
+  } else if (gapFilterEnabled) {
+    label.textContent = `${filteredResults().length} candidate${filteredResults().length === 1 ? "" : "s"} shown.`;
+  } else {
+    label.textContent = `${count} candidate${count === 1 ? "" : "s"} cover remaining AOI.`;
+  }
 }
 
 function escapeHtml(value) {
@@ -573,9 +715,10 @@ async function setItemStatus(itemId, status) {
   const data = await postJson("/api/status", { item_id: itemId, status });
   statuses = data.statuses || statuses;
   coverageSummary = data.coverage || coverageSummary;
+  syncSelectedToVisible();
   renderResults();
-  updateKeptFootprints();
-  if (itemId === selectedId) updatePlanetOverlay();
+  updateKeptImageLayers();
+  updatePlanetOverlay();
   log(`${itemId} marked ${status}.`);
 }
 
@@ -588,8 +731,9 @@ async function rejectUnkeptItems() {
   const data = await postJson("/api/status/bulk", { item_ids: unkeptIds, status: "reject" });
   statuses = data.statuses || statuses;
   coverageSummary = data.coverage || coverageSummary;
+  syncSelectedToVisible();
   renderResults();
-  updateKeptFootprints();
+  updateKeptImageLayers();
   updatePlanetOverlay();
   log(`${unkeptIds.length} unkept item(s) marked reject.`);
 }
@@ -838,7 +982,7 @@ function bindEvents() {
   $("uploadAoi").addEventListener("click", () => uploadAoi().catch((error) => log(error.message)));
   $("searchPlanet").addEventListener("click", queryPlanet);
   $("showPlanetOverlay").addEventListener("change", updatePlanetOverlay);
-  $("showKeptFootprints").addEventListener("change", updateKeptFootprints);
+  $("showKeptImages").addEventListener("change", updateKeptImageLayers);
   $("planetOpacity").addEventListener("input", setPlanetOverlayOpacity);
   $("apiKey").addEventListener("input", scheduleApiValidation);
   $("apiKey").addEventListener("paste", () => setTimeout(scheduleApiValidation, 0));
@@ -857,6 +1001,22 @@ function bindEvents() {
     downloadAllPlanetLinks(button);
   });
   $("rejectUnkept").addEventListener("click", () => rejectUnkeptItems().catch((error) => log(error.message)));
+  $("filterUncovered").addEventListener("click", () => {
+    gapFilterEnabled = !gapFilterEnabled;
+    if (gapFilterEnabled) keptFilterEnabled = false;
+    syncSelectedToVisible();
+    renderResults();
+    updatePlanetOverlay();
+    log(gapFilterEnabled ? "Showing candidates that cover the remaining AOI." : "Showing all candidates.");
+  });
+  $("filterKept").addEventListener("click", () => {
+    keptFilterEnabled = !keptFilterEnabled;
+    if (keptFilterEnabled) gapFilterEnabled = false;
+    syncSelectedToVisible();
+    renderResults();
+    updatePlanetOverlay();
+    log(keptFilterEnabled ? "Showing kept scenes only." : "Showing all candidates.");
+  });
   $("orderKept").addEventListener("click", () => openOrderModal().catch((error) => log(error.message)));
   $("closeOrderModal").addEventListener("click", closeOrderModal);
   $("cancelOrderModal").addEventListener("click", closeOrderModal);

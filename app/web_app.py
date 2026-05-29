@@ -69,6 +69,20 @@ app.secret_key = os.environ.get("PLANET_BROWSER_SECRET_KEY", uuid.uuid4().hex)
 APP_STATE: dict[str, dict[str, Any]] = {}
 TIDE_MODEL_CACHE: dict[str, Any] = {}
 TIMEZONE_FINDER: Any | None = None
+PLANET_HTTP = requests.Session()
+PLANET_HTTP.trust_env = False
+
+
+def add_planet_no_proxy_hosts() -> None:
+    hosts = ["api.planet.com", "tiles0.planet.com", ".planet.com"]
+    existing = [part.strip() for part in os.environ.get("NO_PROXY", "").split(",") if part.strip()]
+    for host in hosts:
+        if host not in existing:
+            existing.append(host)
+    os.environ["NO_PROXY"] = ",".join(existing)
+
+
+add_planet_no_proxy_hosts()
 
 
 def get_state() -> dict[str, Any]:
@@ -181,7 +195,7 @@ def validate_planet_key(api_key: str) -> None:
     api_key = normalise_api_key(api_key)
     if not api_key:
         raise ValueError("Planet API key is required.")
-    response = requests.post(
+    response = PLANET_HTTP.post(
         f"{PLANET_DATA_BASE_URL}/quick-search",
         json={
             "item_types": [ITEM_TYPE],
@@ -493,11 +507,24 @@ def kept_aoi_coverage(state: dict[str, Any]) -> dict[str, Any]:
 
         if not kept_shapes:
             coverage_percent = 0.0
+            uncovered_shape = aoi_shape
         else:
             kept_union = unary_union(kept_shapes)
-            coverage_percent = kept_union.intersection(aoi_shape).area / aoi_shape.area * 100.0
+            kept_union = kept_union.intersection(aoi_shape)
+            coverage_percent = kept_union.area / aoi_shape.area * 100.0
+            uncovered_shape = aoi_shape.difference(kept_union)
 
         coverage_percent = min(100.0, max(0.0, float(coverage_percent)))
+        uncovered_candidate_ids = []
+        if not uncovered_shape.is_empty and uncovered_shape.area > 0:
+            for item in state.get("items", []):
+                item_id = item.get("id")
+                if state.get("statuses", {}).get(item_id) in ("keep", "reject"):
+                    continue
+                geom = clean_geometry(item.get("geometry") or {})
+                if not geom.is_empty and geom.intersects(uncovered_shape):
+                    uncovered_candidate_ids.append(item_id)
+
         threshold = 99.0
         return {
             "kept_count": len(kept_items),
@@ -505,6 +532,7 @@ def kept_aoi_coverage(state: dict[str, Any]) -> dict[str, Any]:
             "uncovered_percent": round(max(0.0, 100.0 - coverage_percent), 2),
             "complete": coverage_percent >= threshold,
             "threshold_percent": threshold,
+            "uncovered_candidate_ids": uncovered_candidate_ids,
         }
     except Exception as exc:
         return {
@@ -673,9 +701,9 @@ def search_planet(
 
     while next_url and len(items) < int(max_results):
         if payload is None:
-            response = requests.get(next_url, auth=HTTPBasicAuth(api_key, ""), timeout=60)
+            response = PLANET_HTTP.get(next_url, auth=HTTPBasicAuth(api_key, ""), timeout=60)
         else:
-            response = requests.post(
+            response = PLANET_HTTP.post(
                 next_url,
                 json=payload,
                 params=params,
@@ -767,7 +795,7 @@ def load_aoi_preview_tiles(api_key: str, item_id: str, item_type: str, aoi: dict
         for tx in range(x_min, x_max + 1):
             tile_url = f"https://tiles0.planet.com/data/v1/{item_type}/{item_id}/{zoom}/{tx}/{ty}.png"
             try:
-                response = requests.get(tile_url, auth=auth, timeout=12)
+                response = PLANET_HTTP.get(tile_url, auth=auth, timeout=12)
                 if response.status_code == 200:
                     tile_img = Image.open(io.BytesIO(response.content)).convert("RGB")
                     mosaic.paste(tile_img, ((tx - x_min) * tile_size, (ty - y_min) * tile_size))
@@ -800,7 +828,7 @@ def load_center_preview_tiles(api_key: str, item_id: str, item_type: str, center
     for tx, ty in tiles_to_fetch:
         tile_url = f"https://tiles0.planet.com/data/v1/{item_type}/{item_id}/{zoom}/{tx}/{ty}.png"
         try:
-            response = requests.get(tile_url, auth=auth, timeout=12)
+            response = PLANET_HTTP.get(tile_url, auth=auth, timeout=12)
             tile_images.append(Image.open(io.BytesIO(response.content)).convert("RGB") if response.status_code == 200 else None)
         except Exception:
             tile_images.append(None)
@@ -1000,7 +1028,7 @@ def get_order_status(api_key: str, order_id: str) -> dict[str, Any]:
 
 
 def fetch_order_detail(api_key: str, order_id: str) -> dict[str, Any]:
-    response = requests.get(
+    response = PLANET_HTTP.get(
         f"{PLANET_ORDERS_BASE_URL}/{order_id}",
         auth=HTTPBasicAuth(normalise_api_key(api_key), ""),
         timeout=30,
@@ -1055,7 +1083,7 @@ def simplify_order(order: dict[str, Any]) -> dict[str, Any]:
 
 
 def list_orders(api_key: str, limit: int = 25) -> list[dict[str, Any]]:
-    response = requests.get(
+    response = PLANET_HTTP.get(
         PLANET_ORDERS_BASE_URL,
         params={"source_type": "scenes", "sort_by": "created_on DESC"},
         auth=HTTPBasicAuth(normalise_api_key(api_key), ""),
@@ -1121,7 +1149,7 @@ def download_order_files(api_key: str, order_id: str) -> dict[str, Any]:
     for index, result in enumerate(results, start=1):
         filename = order_result_filename(result, index)
         target = unique_path(folder, filename)
-        response = requests.get(str(result["location"]), stream=True, timeout=(15, 300))
+        response = PLANET_HTTP.get(str(result["location"]), stream=True, timeout=(15, 300))
         response.raise_for_status()
         with target.open("wb") as file_handle:
             for chunk in response.iter_content(chunk_size=1024 * 1024):
@@ -1336,7 +1364,7 @@ def planet_tile_proxy(item_type: str, item_id: str, zoom: int, x: int, y: int):
 
     tile_url = f"https://tiles0.planet.com/data/v1/{item_type}/{item_id}/{zoom}/{x}/{y}.png"
     try:
-        response = requests.get(tile_url, auth=HTTPBasicAuth(api_key, ""), timeout=15)
+        response = PLANET_HTTP.get(tile_url, auth=HTTPBasicAuth(api_key, ""), timeout=15)
     except Exception as exc:
         return Response(str(exc), status=502)
 

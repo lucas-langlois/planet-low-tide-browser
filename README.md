@@ -36,7 +36,7 @@ For people who only need to use the hosted app, see
 [`CLOUD_RUN_USER_GUIDE.pdf`](CLOUD_RUN_USER_GUIDE.pdf). Windows users can
 double-click `Open_Planet_Low_Tide_Browser_Cloud.bat` to open the cloud app.
 
-Current test deployment:
+Current deployment:
 
 - Project ID: `planet-low-tide-browser-jcu`
 - Region: `australia-southeast1`
@@ -144,6 +144,14 @@ file. They are local runtime files and are ignored by git.
 - `CSIRO_tidal_const_v12.nc` is intentionally ignored by git because it is a
   large local model file.
 - Kept images can be exported as CSV or GeoJSON.
+- Review decisions use a three-state control: pending, keep, or reject.
+- Rejected scenes are removed from the active review table so users do not
+  inspect the same bad scene repeatedly.
+- `Gap only` filters the table to candidates that still cover an uncovered
+  part of the AOI. `Kept only` filters to retained scenes for a second-pass
+  quality review.
+- `Show kept images` displays all kept Planet preview layers on the map with
+  per-scene toggles plus `All` and `None` controls.
 - Kept images can also be ordered through a review panel that asks for an order
   name, product bundle, and optional tools before submitting to Planet.
 
@@ -152,12 +160,13 @@ file. They are local runtime files and are ignored by git.
 The order panel is modelled on Planet Explorer's basic order flow:
 
 1. Keep the candidate scenes you want to download.
-2. Click `Order kept`.
-3. Enter an order name.
-4. Choose an asset type: visual, surface reflectance 4-band, or surface
+2. Use `Kept only` and `Show kept images` for an optional second-pass review.
+3. Click `Order kept`.
+4. Enter an order name.
+5. Choose an asset type: visual, surface reflectance 4-band, or surface
    reflectance 8-band.
-5. Choose tools: clip to AOI, composite, and/or harmonize to Sentinel-2.
-6. Review the estimate before clicking `Place order`.
+6. Choose tools: clip to AOI, composite, and/or harmonize to Sentinel-2.
+7. Review the estimate before clicking `Place order`.
 
 The PlanetScope scene asset choices use these Orders API bundles:
 

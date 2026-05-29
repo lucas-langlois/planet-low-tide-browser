@@ -22,3 +22,6 @@ exports/
 logs/
 .server.pid
 upload_area_test/
+cloud_user_guide_print.html
+.chrome-pdf-profile/
+media-*/

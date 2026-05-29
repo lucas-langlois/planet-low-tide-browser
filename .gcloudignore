@@ -17,6 +17,7 @@ exports/
 logs/
 .server.pid
 upload_area_test/
+*.pdf
 
 # Do not ignore tide/CSIRO_tidal_const_v12.nc here. The first Cloud Run proof
 # of concept bakes the local model file into the container image.

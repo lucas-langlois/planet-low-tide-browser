@@ -17,6 +17,7 @@ exports/
 logs/
 .server.pid
 upload_area_test/
+*.pdf
 
 # Keep tide/CSIRO_tidal_const_v12.nc in the Docker build context when present.
 # It is ignored by git, but the first Cloud Run proof of concept can bake the

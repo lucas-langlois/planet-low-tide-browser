@@ -225,6 +225,12 @@ button.primary-action {
   border-color: var(--blue);
 }
 
+button.active {
+  color: #fff;
+  background: #243447;
+  border-color: #243447;
+}
+
 button:disabled,
 button:disabled:hover {
   border-color: #cbd3dc;
@@ -379,8 +385,96 @@ button:disabled:hover {
   font-size: 12px;
 }
 
-#keptFootprintLabel {
-  min-width: 130px;
+#keptImageLayerLabel {
+  min-width: 112px;
+}
+
+.kept-layer-control {
+  width: min(258px, calc(100vw - 58px));
+  margin-left: 42px;
+  border: 1px solid rgba(24, 36, 49, 0.24);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.18);
+  overflow: hidden;
+}
+
+.kept-layer-head {
+  width: 100%;
+  min-height: 30px;
+  padding: 5px 8px;
+  border: 0;
+  border-radius: 0;
+  background: #152536;
+  color: #fff;
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+}
+
+.kept-layer-head strong {
+  min-width: 20px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.18);
+  text-align: center;
+}
+
+.kept-layer-body {
+  max-height: 172px;
+  overflow: auto;
+  padding: 4px;
+}
+
+.kept-layer-actions {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 2px 2px 5px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  background: rgba(255, 255, 255, 0.96);
+}
+
+.kept-layer-actions button {
+  min-height: 24px;
+  padding: 3px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.kept-layer-row {
+  min-height: 28px;
+  padding: 4px 5px;
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 5px;
+  border-radius: 5px;
+  font-size: 11px;
+}
+
+.kept-layer-row:hover {
+  background: #eef4f8;
+}
+
+.kept-layer-row input {
+  margin: 0;
+}
+
+.kept-layer-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 700;
+}
+
+.kept-layer-meta {
+  color: var(--muted);
+  font-size: 10px;
 }
 
 .range-row {
@@ -440,6 +534,13 @@ button:disabled:hover {
   justify-content: flex-end;
 }
 
+.candidate-filter-hint {
+  min-width: 180px;
+  color: var(--muted);
+  font-size: 12px;
+  text-align: right;
+}
+
 .table-wrap {
   min-height: 0;
   overflow: auto;
@@ -451,6 +552,12 @@ table {
   width: 100%;
   border-collapse: collapse;
   font-size: 13px;
+}
+
+.empty-row {
+  padding: 18px;
+  color: var(--muted);
+  text-align: center;
 }
 
 th,
@@ -473,21 +580,47 @@ tr.selected {
 }
 
 .decision-cell {
-  min-width: 150px;
+  min-width: 164px;
 }
 
-.keep-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  font-weight: 700;
-  color: var(--ink);
+.decision-switch {
+  display: inline-grid;
+  grid-template-columns: 30px 54px 60px;
+  gap: 3px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #f7f9fb;
 }
 
-.keep-toggle input {
-  width: 18px;
-  height: 18px;
-  accent-color: var(--green);
+.decision-btn {
+  min-height: 24px;
+  padding: 3px 6px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.decision-btn:hover {
+  background: #e8eef3;
+}
+
+.decision-btn.active.pending {
+  background: #fff4d6;
+  color: var(--amber);
+}
+
+.decision-btn.active.keep {
+  background: var(--green);
+  color: #fff;
+}
+
+.decision-btn.active.reject {
+  background: var(--red);
+  color: #fff;
 }
 
 .pill {

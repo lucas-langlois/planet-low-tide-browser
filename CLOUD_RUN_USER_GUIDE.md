@@ -101,7 +101,10 @@ After the search finishes:
 
 1. Click a candidate row to inspect it on the map.
 2. Use the Planet overlay controls to view the selected scene over your AOI.
-3. Tick `Keep` for scenes you want to retain.
+3. Use the row decision buttons:
+   - `?` leaves a scene pending.
+   - `Keep` retains a good scene.
+   - `Reject` removes a bad scene from the active review list.
 4. Use `Reject rest` after you have selected the good scenes.
 
 For large AOIs, one scene may not cover the whole selected area. As you mark
@@ -109,9 +112,17 @@ scenes as `Keep`, the app reports how much of the AOI is covered by the union
 of all kept scene footprints. If the summary says coverage is incomplete, keep
 reviewing and selecting more scenes until the AOI is covered.
 
-Use `Show kept footprints` on the map to display all kept scene footprints at
-once before ordering. This gives a final visual check that the selected scenes
-cover the full AOI.
+Use `Gap only` to show only scenes that still cover part of the AOI not already
+covered by kept scenes. This is useful for large AOIs where several scenes are
+needed. The list updates as you keep or reject scenes.
+
+Use `Kept only` for a second-pass review after the AOI is covered. This helps
+compare retained scenes and demote weaker overlaps before ordering.
+
+Use `Show kept images` on the map to display all kept scenes at once before
+ordering. The map adds a Leaflet layer checklist so overlapping kept images can
+be switched on and off individually for a final visual check. Use `All` and
+`None` in that Leaflet checklist to quickly show or hide every kept image layer.
 
 You can export retained scene lists at any time:
 
