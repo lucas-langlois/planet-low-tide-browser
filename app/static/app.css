@@ -166,6 +166,16 @@ input {
   display: none;
 }
 
+.coverage-complete {
+  color: var(--green);
+  font-weight: 700;
+}
+
+.coverage-incomplete {
+  color: #9a6700;
+  font-weight: 700;
+}
+
 button,
 .button {
   min-height: 34px;

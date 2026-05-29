@@ -458,6 +458,65 @@ def item_aoi_coverage(item: dict[str, Any], aoi: dict[str, Any]) -> float | None
         return None
 
 
+def clean_geometry(geometry: Any):
+    from shapely.geometry import shape
+
+    geom = shape(geometry or {})
+    if geom.is_empty:
+        return geom
+    if not geom.is_valid:
+        geom = geom.buffer(0)
+    return geom
+
+
+def kept_aoi_coverage(state: dict[str, Any]) -> dict[str, Any]:
+    try:
+        from shapely.ops import unary_union
+
+        aoi = state.get("aoi") or {}
+        aoi_shape = clean_geometry(aoi)
+        if aoi_shape.is_empty or aoi_shape.area == 0:
+            return {
+                "kept_count": 0,
+                "coverage_percent": 0.0,
+                "uncovered_percent": 100.0,
+                "complete": False,
+                "threshold_percent": 99.0,
+            }
+
+        kept_items = [item for item in state.get("items", []) if state.get("statuses", {}).get(item.get("id")) == "keep"]
+        kept_shapes = []
+        for item in kept_items:
+            geom = clean_geometry(item.get("geometry") or {})
+            if not geom.is_empty:
+                kept_shapes.append(geom.intersection(aoi_shape))
+
+        if not kept_shapes:
+            coverage_percent = 0.0
+        else:
+            kept_union = unary_union(kept_shapes)
+            coverage_percent = kept_union.intersection(aoi_shape).area / aoi_shape.area * 100.0
+
+        coverage_percent = min(100.0, max(0.0, float(coverage_percent)))
+        threshold = 99.0
+        return {
+            "kept_count": len(kept_items),
+            "coverage_percent": round(coverage_percent, 2),
+            "uncovered_percent": round(max(0.0, 100.0 - coverage_percent), 2),
+            "complete": coverage_percent >= threshold,
+            "threshold_percent": threshold,
+        }
+    except Exception as exc:
+        return {
+            "kept_count": 0,
+            "coverage_percent": None,
+            "uncovered_percent": None,
+            "complete": False,
+            "threshold_percent": 99.0,
+            "error": str(exc),
+        }
+
+
 def acquired_timestamp(item: dict[str, Any]) -> pd.Timestamp:
     acquired = item.get("properties", {}).get("acquired")
     if not acquired:
@@ -1188,12 +1247,14 @@ def api_search():
     state["aoi"] = aoi
     state["items"] = items
     state["statuses"] = {item["id"]: "pending" for item in items}
+    coverage = kept_aoi_coverage(state)
     return jsonify(
         {
             "items": items,
             "tide": tide_info,
             "time": time_info,
             "dedupe": dedupe_info,
+            "coverage": coverage,
             "key_source": key_source,
             "masked_api_key": mask_api_key(api_key),
         }
@@ -1225,7 +1286,7 @@ def api_status():
         return jsonify({"error": "Unknown status."}), 400
     state = get_state()
     state["statuses"][item_id] = status
-    return jsonify({"ok": True, "statuses": state["statuses"]})
+    return jsonify({"ok": True, "statuses": state["statuses"], "coverage": kept_aoi_coverage(state)})
 
 
 @app.post("/api/status/bulk")
@@ -1240,7 +1301,7 @@ def api_status_bulk():
     for item_id in item_ids:
         if item_id in known_ids:
             state["statuses"][item_id] = status
-    return jsonify({"ok": True, "statuses": state["statuses"]})
+    return jsonify({"ok": True, "statuses": state["statuses"], "coverage": kept_aoi_coverage(state)})
 
 
 @app.get("/api/preview/<item_id>.png")

@@ -12,6 +12,7 @@ let statuses = {};
 let selectedId = null;
 let apiValidationTimer = null;
 let apiValidationRequestId = 0;
+let coverageSummary = null;
 
 const $ = (id) => document.getElementById(id);
 
@@ -312,6 +313,7 @@ async function queryPlanet() {
     });
     results = data.items || [];
     statuses = Object.fromEntries(results.map((item) => [item.id, "pending"]));
+    coverageSummary = data.coverage || null;
     selectedId = results.length ? results[0].id : null;
     renderResults();
     updatePlanetOverlay();
@@ -373,7 +375,24 @@ function updateDecisionSummary() {
   results.forEach((item) => {
     counts[statuses[item.id] || "pending"] += 1;
   });
-  $("decisionSummary").textContent = `${counts.keep} kept, ${counts.reject} rejected, ${counts.pending} pending.`;
+  const decisionText = `${counts.keep} kept, ${counts.reject} rejected, ${counts.pending} pending.`;
+  const coverageText = keptCoverageText();
+  $("decisionSummary").textContent = coverageText ? `${decisionText} ${coverageText}` : decisionText;
+  $("decisionSummary").classList.toggle("coverage-complete", Boolean(coverageSummary?.complete));
+  $("decisionSummary").classList.toggle("coverage-incomplete", Boolean(coverageSummary && !coverageSummary.complete));
+}
+
+function keptCoverageText() {
+  if (!coverageSummary || coverageSummary.coverage_percent == null) return "";
+  const percent = Number(coverageSummary.coverage_percent).toFixed(1);
+  if (!coverageSummary.kept_count) {
+    return "Kept coverage: 0.0% of AOI.";
+  }
+  if (coverageSummary.complete) {
+    return `Kept coverage: ${percent}% of AOI. AOI covered.`;
+  }
+  const remaining = coverageSummary.uncovered_percent == null ? "" : ` About ${Number(coverageSummary.uncovered_percent).toFixed(1)}% remains uncovered.`;
+  return `Kept coverage: ${percent}% of AOI.${remaining} Keep reviewing.`;
 }
 
 function keptItemIds() {
@@ -485,8 +504,9 @@ function closeOrderModal() {
 }
 
 async function setItemStatus(itemId, status) {
-  await postJson("/api/status", { item_id: itemId, status });
-  statuses[itemId] = status;
+  const data = await postJson("/api/status", { item_id: itemId, status });
+  statuses = data.statuses || statuses;
+  coverageSummary = data.coverage || coverageSummary;
   renderResults();
   if (itemId === selectedId) updatePlanetOverlay();
   log(`${itemId} marked ${status}.`);
@@ -500,6 +520,7 @@ async function rejectUnkeptItems() {
   }
   const data = await postJson("/api/status/bulk", { item_ids: unkeptIds, status: "reject" });
   statuses = data.statuses || statuses;
+  coverageSummary = data.coverage || coverageSummary;
   renderResults();
   updatePlanetOverlay();
   log(`${unkeptIds.length} unkept item(s) marked reject.`);

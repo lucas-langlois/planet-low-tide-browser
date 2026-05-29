@@ -104,6 +104,11 @@ After the search finishes:
 3. Tick `Keep` for scenes you want to retain.
 4. Use `Reject rest` after you have selected the good scenes.
 
+For large AOIs, one scene may not cover the whole selected area. As you mark
+scenes as `Keep`, the app reports how much of the AOI is covered by the union
+of all kept scene footprints. If the summary says coverage is incomplete, keep
+reviewing and selecting more scenes until the AOI is covered.
+
 You can export retained scene lists at any time:
 
 - `CSV`
