@@ -109,6 +109,10 @@ scenes as `Keep`, the app reports how much of the AOI is covered by the union
 of all kept scene footprints. If the summary says coverage is incomplete, keep
 reviewing and selecting more scenes until the AOI is covered.
 
+Use `Show kept footprints` on the map to display all kept scene footprints at
+once before ordering. This gives a final visual check that the selected scenes
+cover the full AOI.
+
 You can export retained scene lists at any time:
 
 - `CSV`

@@ -379,6 +379,10 @@ button:disabled:hover {
   font-size: 12px;
 }
 
+#keptFootprintLabel {
+  min-width: 130px;
+}
+
 .range-row {
   min-width: 170px;
   margin: 0;

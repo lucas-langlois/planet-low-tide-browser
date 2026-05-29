@@ -4,6 +4,7 @@ let drawLayer;
 let satelliteLayer;
 let streetLayer;
 let planetOverlayLayer = null;
+let keptFootprintLayer = null;
 let drawing = false;
 let drawPoints = [];
 let currentAoi = null;
@@ -102,6 +103,7 @@ function setAoi(aoi, summary = null) {
   currentAoi = aoi;
   if (aoiLayer) map.removeLayer(aoiLayer);
   if (drawLayer) drawLayer.clearLayers();
+  updateKeptFootprints();
   aoiLayer = L.geoJSON(aoi, {
     style: { color: "#f05a28", weight: 3, fillOpacity: 0.12 }
   }).addTo(map);
@@ -139,6 +141,69 @@ function updatePlanetOverlay() {
     map.fitBounds(aoiLayer.getBounds(), { padding: [30, 30] });
   }
   $("mapOverlayLabel").textContent = `${item.id} on map`;
+}
+
+function keptItems() {
+  return results.filter((item) => statuses[item.id] === "keep" && item.geometry);
+}
+
+function keptFootprintStyle(feature) {
+  const palette = ["#00a6d6", "#7b61ff", "#00a878", "#d16b00", "#c33c54", "#1f78b4"];
+  const index = Number(feature?.properties?.kept_index || 0);
+  const color = palette[index % palette.length];
+  return {
+    color,
+    weight: 2,
+    opacity: 0.95,
+    fillColor: color,
+    fillOpacity: 0.16,
+  };
+}
+
+function updateKeptFootprints() {
+  if (keptFootprintLayer) {
+    map.removeLayer(keptFootprintLayer);
+    keptFootprintLayer = null;
+  }
+
+  const label = $("keptFootprintLabel");
+  const showLayer = $("showKeptFootprints")?.checked ?? false;
+  const kept = keptItems();
+  if (label) {
+    label.textContent = kept.length ? `${kept.length} kept footprint${kept.length === 1 ? "" : "s"}` : "No kept scenes yet.";
+  }
+  if (!showLayer || !kept.length) {
+    return;
+  }
+
+  keptFootprintLayer = L.geoJSON(
+    {
+      type: "FeatureCollection",
+      features: kept.map((item, index) => ({
+        type: "Feature",
+        geometry: item.geometry,
+        properties: {
+          id: item.id,
+          kept_index: index,
+          aoi_coverage_percent: item.aoi_coverage_percent,
+          tide_height: item.tide_height,
+        },
+      })),
+    },
+    {
+      style: keptFootprintStyle,
+      onEachFeature: (feature, layer) => {
+        const coverage = feature.properties.aoi_coverage_percent == null
+          ? ""
+          : `AOI ${Number(feature.properties.aoi_coverage_percent).toFixed(1)}%`;
+        const tide = feature.properties.tide_height == null ? "" : `Tide ${feature.properties.tide_height} m`;
+        layer.bindTooltip([feature.properties.id, coverage, tide].filter(Boolean).join(" | "));
+      },
+    }
+  ).addTo(map);
+
+  keptFootprintLayer.bringToFront();
+  if (aoiLayer) aoiLayer.bringToFront();
 }
 
 function setPlanetOverlayOpacity() {
@@ -380,6 +445,7 @@ function updateDecisionSummary() {
   $("decisionSummary").textContent = coverageText ? `${decisionText} ${coverageText}` : decisionText;
   $("decisionSummary").classList.toggle("coverage-complete", Boolean(coverageSummary?.complete));
   $("decisionSummary").classList.toggle("coverage-incomplete", Boolean(coverageSummary && !coverageSummary.complete));
+  updateKeptFootprints();
 }
 
 function keptCoverageText() {
@@ -508,6 +574,7 @@ async function setItemStatus(itemId, status) {
   statuses = data.statuses || statuses;
   coverageSummary = data.coverage || coverageSummary;
   renderResults();
+  updateKeptFootprints();
   if (itemId === selectedId) updatePlanetOverlay();
   log(`${itemId} marked ${status}.`);
 }
@@ -522,6 +589,7 @@ async function rejectUnkeptItems() {
   statuses = data.statuses || statuses;
   coverageSummary = data.coverage || coverageSummary;
   renderResults();
+  updateKeptFootprints();
   updatePlanetOverlay();
   log(`${unkeptIds.length} unkept item(s) marked reject.`);
 }
@@ -770,6 +838,7 @@ function bindEvents() {
   $("uploadAoi").addEventListener("click", () => uploadAoi().catch((error) => log(error.message)));
   $("searchPlanet").addEventListener("click", queryPlanet);
   $("showPlanetOverlay").addEventListener("change", updatePlanetOverlay);
+  $("showKeptFootprints").addEventListener("change", updateKeptFootprints);
   $("planetOpacity").addEventListener("input", setPlanetOverlayOpacity);
   $("apiKey").addEventListener("input", scheduleApiValidation);
   $("apiKey").addEventListener("paste", () => setTimeout(scheduleApiValidation, 0));
