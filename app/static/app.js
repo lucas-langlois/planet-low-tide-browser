@@ -665,12 +665,13 @@ function renderOrderSummary(estimate) {
       <div class="summary-line"><span>Bundle</span><strong>${escapeHtml(estimate.product_bundle)}</strong></div>
       <div class="summary-line"><span>AOI area</span><strong>${estimate.aoi_area_km2} km²</strong></div>
       <div class="summary-line"><span>AOI-intersection area</span><strong>${estimate.estimated_aoi_intersection_km2} km²</strong></div>
+      <div class="summary-line"><span>Selected scene area</span><strong>${estimate.estimated_scene_area_km2} km²</strong></div>
       <div class="summary-line"><span>Processed area estimate</span><strong>${estimate.estimated_processed_area_km2} km²</strong></div>
       <div class="summary-line"><span>Education quota use</span><strong>${estimate.education_quota_percent}% of ${estimate.education_monthly_quota_km2} km²/month</strong></div>
       <div class="summary-line"><span>Tools</span><strong>${tools.length ? escapeHtml(tools.join(", ")) : "None"}</strong></div>
     </div>
     ${warnings ? `<ul class="warning-list">${warnings}</ul>` : ""}
-    <p class="summary-note">Estimate uses AOI geometry and kept-scene coverage to compare expected quota use with the standard 3,000 km²/month education-account quota. Planet calculates the final quota when the order runs.</p>
+    <p class="summary-note">With Clip to AOI on, processed area uses selected scene overlap with the AOI. With Clip to AOI off, it uses selected full scene footprints. Planet calculates the final quota when the order runs.</p>
   `;
   $("submitOrder").disabled = !estimate.can_order;
 }

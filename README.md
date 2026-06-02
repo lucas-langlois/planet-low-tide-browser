@@ -185,10 +185,13 @@ for VM/local workflows, but the Cloud Run UI should prefer direct Planet links
 because Cloud Run's local filesystem is temporary.
 
 The estimate reports item count, expected output image count, AOI area,
-AOI-intersection area, and processed-area estimate. The app also compares the
-processed-area estimate against the standard 3,000 km²/month education-account
-quota used by this project. Planet calculates the final quota when the order
-runs, so the estimate is a guardrail rather than a guarantee.
+AOI-intersection area, selected full-scene area, and processed-area estimate.
+With `Clip to AOI` enabled, the processed-area estimate uses the selected
+scenes' AOI intersections. With clipping disabled, it uses the selected full
+scene footprints. The app also compares the processed-area estimate against the
+standard 3,000 km²/month education-account quota used by this project. Planet
+calculates the final quota when the order runs, so the estimate is a guardrail
+rather than a guarantee.
 
 ## AOI Tide Prediction
 
@@ -199,22 +202,25 @@ For each Planet candidate image:
 
 1. The app reads the image acquisition timestamp from Planet metadata and
    converts it to UTC.
-2. The drawn or uploaded AOI is normalised to lon/lat polygon geometry.
+2. The drawn or uploaded AOI and the candidate scene footprint are normalised
+   to lon/lat polygon geometry.
 3. The app loads `tide/Tide_predictions.py` and opens
    `tide/CSIRO_tidal_const_v12.nc` through `CsiROModel`.
-4. CSIRO model mesh-face centroids inside the AOI are selected using the AOI
-   polygon.
+4. The scene footprint is intersected with the AOI, and CSIRO model mesh-face
+   centroids inside that overlap geometry are selected. If the scene fully
+   covers the AOI, the full AOI is used.
 5. Tide height is reconstructed at each image acquisition time for every
    selected mesh face using the harmonic reconstruction logic in
    `Tide_predictions.py`.
-6. If multiple model faces fall inside the AOI, their predicted tide heights are
-   averaged to produce an AOI-average tide height for that image.
-7. If no model face centroid falls inside the AOI, the app falls back to the
-   nearest model face to the AOI centre.
+6. If multiple model faces fall inside the selected geometry, the candidate
+   tide score is the minimum predicted tide height across those faces.
+7. If the overlap is empty or invalid, the app falls back to the AOI. If no
+   model face centroid falls inside the selected geometry, the app uses the
+   nearest model face to that geometry centre.
 8. Candidate images are sorted by predicted tide height, lowest first.
 
 The app stores `tide_height`, `tide_method`, and `tide_faces` on each candidate
 item so exports can include the predicted tide and the number of CSIRO model
-faces used. The current web app calls the reconstruction helper in
-`Tide_predictions.py` directly for AOI averaging; a future cleanup should expose
-a public AOI/face-based wrapper in that tide module.
+faces used. Tide-face selection is cached by selected geometry so repeated full
+AOI scenes or repeated scene footprints do not need to repeat the spatial face
+lookup.

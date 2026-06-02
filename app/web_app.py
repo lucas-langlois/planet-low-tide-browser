@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import hashlib
 import importlib
 import io
 import json
@@ -277,6 +278,11 @@ def aoi_polygons(aoi: dict[str, Any]) -> list[list[list[float]]]:
             if coords:
                 polys.append(close_ring([[float(x), float(y)] for x, y, *_ in coords[0]]))
         return polys
+    if aoi.get("type") == "GeometryCollection":
+        polys: list[list[list[float]]] = []
+        for geom in aoi.get("geometries") or []:
+            polys.extend(aoi_polygons(geom))
+        return polys
     return []
 
 
@@ -286,22 +292,39 @@ def polygons_to_geojson(polygons: list[list[list[float]]]) -> dict[str, Any]:
     return {"type": "MultiPolygon", "coordinates": [[close_ring(poly)] for poly in polygons]}
 
 
-def aoi_area_km2(aoi: dict[str, Any]) -> float:
+def geometry_area_km2(geometry: dict[str, Any]) -> float:
     try:
+        from shapely.geometry import shape
         from pyproj import Geod
 
+        geom = shape(geometry or {})
+        if geom.is_empty:
+            return 0.0
+        if not geom.is_valid:
+            geom = geom.buffer(0)
         geod = Geod(ellps="WGS84")
-        total_area_m2 = 0.0
-        for poly in aoi_polygons(aoi):
-            if len(poly) < 4:
-                continue
-            lons = [point[0] for point in poly]
-            lats = [point[1] for point in poly]
-            area_m2, _perimeter_m = geod.polygon_area_perimeter(lons, lats)
-            total_area_m2 += abs(area_m2)
-        return total_area_m2 / 1_000_000.0
+        area_m2, _perimeter_m = geod.geometry_area_perimeter(geom)
+        return abs(float(area_m2)) / 1_000_000.0
     except Exception:
-        return 0.0
+        try:
+            from pyproj import Geod
+
+            geod = Geod(ellps="WGS84")
+            total_area_m2 = 0.0
+            for poly in aoi_polygons(geometry):
+                if len(poly) < 4:
+                    continue
+                lons = [point[0] for point in poly]
+                lats = [point[1] for point in poly]
+                area_m2, _perimeter_m = geod.polygon_area_perimeter(lons, lats)
+                total_area_m2 += abs(area_m2)
+            return total_area_m2 / 1_000_000.0
+        except Exception:
+            return 0.0
+
+
+def aoi_area_km2(aoi: dict[str, Any]) -> float:
+    return geometry_area_km2(aoi)
 
 
 def aoi_summary(aoi: dict[str, Any], name: str) -> dict[str, Any]:
@@ -557,18 +580,11 @@ def acquired_timestamp(item: dict[str, Any]) -> pd.Timestamp:
     return ts.tz_localize(None)
 
 
-def predict_tides_for_items(items: list[dict[str, Any]], aoi: dict[str, Any]) -> tuple[list[dict[str, Any]], dict[str, Any]]:
-    if not items:
-        return items, {"n_faces": 0, "method": "none"}
-
-    tide_predictions = import_tide_predictions()
-    model = get_tide_model()
-    times = pd.DatetimeIndex([acquired_timestamp(item) for item in items])
-    polygons = aoi_polygons(aoi)
-
+def tide_face_indices_for_geometry(model: Any, geometry: dict[str, Any]):
     import numpy as np
     from matplotlib.path import Path as MplPath
 
+    polygons = aoi_polygons(geometry)
     points = np.column_stack([model.face_lon, model.face_lat])
     mask = np.zeros(points.shape[0], dtype=bool)
     for poly in polygons:
@@ -576,31 +592,107 @@ def predict_tides_for_items(items: list[dict[str, Any]], aoi: dict[str, Any]) ->
             mask |= MplPath(poly).contains_points(points)
 
     face_indices = np.where(mask)[0]
-    method = "area-average"
+    method = "scene-overlap-minimum"
     if face_indices.size == 0:
-        lat, lon = aoi_center(aoi)
+        lat, lon = aoi_center(geometry)
         iface, _distance_km = model.nearest_face(lon, lat)
         face_indices = np.asarray([iface], dtype=int)
-        method = "nearest-face-fallback"
+        method = "scene-overlap-nearest-face"
+    return face_indices, method
 
-    total = np.zeros(len(times), dtype=float)
-    for iface in face_indices:
-        total += tide_predictions._reconstruct_tides(
-            ds=model.ds,
-            iface=int(iface),
-            lat=float(model.face_lat[int(iface)]),
-            times=times,
-            constituents=model.constituents,
-        )
-    tide_values = total / float(face_indices.size)
 
-    for item, tide_height in zip(items, tide_values):
-        item["tide_height"] = round(float(tide_height), 4)
-        item["tide_method"] = method
-        item["tide_faces"] = int(face_indices.size)
+def item_tide_geometry(item: dict[str, Any], aoi: dict[str, Any]) -> dict[str, Any]:
+    from shapely.geometry import mapping
+
+    coverage = item.get("aoi_coverage_percent")
+    if coverage is not None and float(coverage) >= 99.999:
+        return aoi
+
+    try:
+        aoi_shape = clean_geometry(aoi)
+        item_shape = clean_geometry(item.get("geometry") or {})
+    except Exception:
+        return aoi
+
+    if aoi_shape.is_empty or item_shape.is_empty or aoi_shape.area <= 0:
+        return aoi
+    if item_shape.covers(aoi_shape):
+        return aoi
+
+    overlap = aoi_shape.intersection(item_shape)
+    if overlap.is_empty or overlap.area <= 0:
+        return aoi
+    if not overlap.is_valid:
+        overlap = overlap.buffer(0)
+    if overlap.is_empty or overlap.area <= 0:
+        return aoi
+    return mapping(overlap)
+
+
+def geometry_cache_key(geometry: dict[str, Any]) -> str:
+    try:
+        geom = clean_geometry(geometry)
+        return hashlib.sha1(geom.wkb).hexdigest()
+    except Exception:
+        return hashlib.sha1(json.dumps(geometry, sort_keys=True).encode("utf-8")).hexdigest()
+
+
+def predict_tides_for_items(items: list[dict[str, Any]], aoi: dict[str, Any]) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    if not items:
+        return items, {"n_faces": 0, "method": "none"}
+
+    import numpy as np
+
+    tide_predictions = import_tide_predictions()
+    model = get_tide_model()
+    method_counts: dict[str, int] = {}
+    face_counts: list[int] = []
+    groups: dict[tuple[tuple[int, ...], str], list[int]] = {}
+    face_cache: dict[str, tuple[Any, str]] = {}
+
+    for item_index, item in enumerate(items):
+        tide_geometry = item_tide_geometry(item, aoi)
+        cache_key = geometry_cache_key(tide_geometry)
+        if cache_key not in face_cache:
+            face_cache[cache_key] = tide_face_indices_for_geometry(model, tide_geometry)
+        face_indices, method = face_cache[cache_key]
+        face_key = tuple(int(index) for index in face_indices)
+        groups.setdefault((face_key, method), []).append(item_index)
+        method_counts[method] = method_counts.get(method, 0) + 1
+        face_counts.append(len(face_key))
+
+    for (face_key, method), item_indices in groups.items():
+        face_indices = np.asarray(face_key, dtype=int)
+        times = pd.DatetimeIndex([acquired_timestamp(items[item_index]) for item_index in item_indices])
+        face_tides = []
+        for iface in face_indices:
+            face_tides.append(
+                tide_predictions._reconstruct_tides(
+                    ds=model.ds,
+                    iface=int(iface),
+                    lat=float(model.face_lat[int(iface)]),
+                    times=times,
+                    constituents=model.constituents,
+                )
+            )
+        tide_values = np.min(np.vstack(face_tides), axis=0)
+        for item_index, tide_height in zip(item_indices, tide_values):
+            item = items[item_index]
+            item["tide_height"] = round(float(tide_height), 4)
+            item["tide_method"] = method
+            item["tide_faces"] = int(face_indices.size)
 
     items.sort(key=lambda item: (item.get("tide_height") is None, item.get("tide_height", float("inf"))))
-    return items, {"n_faces": int(face_indices.size), "method": method}
+    method = "scene-overlap-minimum"
+    if method_counts:
+        method = ",".join(f"{name}:{count}" for name, count in sorted(method_counts.items()))
+    return items, {
+        "n_faces": int(max(face_counts) if face_counts else 0),
+        "min_faces": int(min(face_counts) if face_counts else 0),
+        "max_faces": int(max(face_counts) if face_counts else 0),
+        "method": method,
+        "geometry_cache_entries": len(face_cache),
+    }
 
 
 def normalise_item(item: dict[str, Any], aoi: dict[str, Any]) -> dict[str, Any]:
@@ -927,18 +1019,47 @@ def estimate_order(item_ids: list[str], items: list[dict[str, Any]], aoi: dict[s
     item_count = len(item_ids)
     aoi_area = aoi_area_km2(aoi)
     intersection_area = 0.0
+    scene_area = 0.0
+    aoi_shape = clean_geometry(aoi)
+    intersection_shapes = []
+    scene_shapes = []
     for item in items:
-        coverage = item.get("aoi_coverage_percent")
-        if coverage is None:
-            coverage = 100.0
-        intersection_area += aoi_area * max(0.0, min(float(coverage), 100.0)) / 100.0
+        item_geometry = item.get("geometry") or {}
+        scene_area += geometry_area_km2(item_geometry)
+        try:
+            item_shape = clean_geometry(item_geometry)
+            if not item_shape.is_empty:
+                scene_shapes.append(item_shape)
+            overlap = item_shape.intersection(aoi_shape)
+            if not overlap.is_empty:
+                intersection_shapes.append(overlap)
+                intersection_area += geometry_area_km2(overlap.__geo_interface__)
+        except Exception:
+            coverage = item.get("aoi_coverage_percent")
+            if coverage is None:
+                coverage = 100.0
+            intersection_area += aoi_area * max(0.0, min(float(coverage), 100.0)) / 100.0
 
-    processed_area = aoi_area if composite and clip_to_aoi and item_count else intersection_area
-    if not clip_to_aoi:
-        processed_area = intersection_area
+    intersection_union_area = intersection_area
+    scene_union_area = scene_area
+    try:
+        from shapely.ops import unary_union
+
+        if intersection_shapes:
+            intersection_union_area = geometry_area_km2(unary_union(intersection_shapes).__geo_interface__)
+        if scene_shapes:
+            scene_union_area = geometry_area_km2(unary_union(scene_shapes).__geo_interface__)
+    except Exception:
+        pass
+
+    if clip_to_aoi:
+        processed_area = intersection_union_area if composite and item_count else intersection_area
+        area_method = "aoi-intersection-union" if composite and item_count else "aoi-intersection"
+    else:
+        processed_area = scene_union_area if composite and item_count else scene_area
+        area_method = "full-scene-footprint-union" if composite and item_count else "full-scene-footprints"
 
     output_images = 1 if composite and item_count else item_count
-    pixel_area_m2 = 3.0 * 3.0
     quota_percent = processed_area / EDUCATION_MONTHLY_QUOTA_KM2 * 100.0 if EDUCATION_MONTHLY_QUOTA_KM2 else 0.0
     warnings = []
     if item_count > 500:
@@ -961,7 +1082,11 @@ def estimate_order(item_ids: list[str], items: list[dict[str, Any]], aoi: dict[s
         "product_bundle": asset["product_bundle"],
         "aoi_area_km2": round(aoi_area),
         "estimated_aoi_intersection_km2": round(intersection_area),
+        "estimated_aoi_intersection_union_km2": round(intersection_union_area),
+        "estimated_scene_area_km2": round(scene_area),
+        "estimated_scene_union_area_km2": round(scene_union_area),
         "estimated_processed_area_km2": round(processed_area),
+        "area_estimate_method": area_method,
         "education_monthly_quota_km2": EDUCATION_MONTHLY_QUOTA_KM2,
         "education_quota_percent": round(quota_percent, 1),
         "tools": {
