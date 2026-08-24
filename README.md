@@ -143,7 +143,8 @@ file. They are local runtime files and are ignored by git.
 - Tide prediction is sourced from `tide/Tide_predictions.py`.
 - `CSIRO_tidal_const_v12.nc` is intentionally ignored by git because it is a
   large local model file.
-- Kept images can be exported as CSV or GeoJSON.
+- Kept images can be exported as CSV or GeoJSON. CSV exports include a Planet
+  XYZ tile URL for ArcGIS Online with the current session API key filled in.
 - Review decisions use a three-state control: pending, keep, or reject.
 - Rejected scenes are removed from the active review table so users do not
   inspect the same bad scene repeatedly.

@@ -130,8 +130,10 @@ You can export retained scene lists at any time:
 - `GeoJSON`
 - `Copy IDs`
 
-Use CSV or GeoJSON for QGIS workflows. Use copied IDs when another Planet tool
-needs a comma-separated scene list.
+Use CSV or GeoJSON for QGIS workflows. The CSV includes a Planet XYZ tile URL
+for ArcGIS Online with the current session API key filled in, so treat exported
+CSVs as credential-bearing files. Use copied IDs when another Planet tool needs
+a comma-separated scene list.
 
 ## Order Kept Images
 

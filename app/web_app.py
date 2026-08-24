@@ -15,7 +15,7 @@ import webbrowser
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
-from urllib.parse import unquote, urljoin, urlparse
+from urllib.parse import quote, unquote, urljoin, urlparse
 from zoneinfo import ZoneInfo
 from zipfile import ZipFile
 
@@ -945,7 +945,15 @@ def load_preview_tiles(api_key: str, item_id: str, item_type: str, aoi: dict[str
     return load_center_preview_tiles(api_key, item_id, item_type, center_lat, center_lon, mode)
 
 
-def make_csv(items: list[dict[str, Any]], statuses: dict[str, str]) -> str:
+def planet_arcgis_xyz_url(item_id: str, item_type: str, api_key: str) -> str:
+    encoded_key = quote(normalise_api_key(api_key), safe="")
+    return (
+        f"https://tiles{{0-3}}.planet.com/data/v1/{item_type}/{item_id}"
+        f"/{{level}}/{{col}}/{{row}}.png?api_key={encoded_key}"
+    )
+
+
+def make_csv(items: list[dict[str, Any]], statuses: dict[str, str], api_key: str = "") -> str:
     buf = io.StringIO()
     fields = [
         "item_id",
@@ -963,11 +971,13 @@ def make_csv(items: list[dict[str, Any]], statuses: dict[str, str]) -> str:
         "satellite_id",
         "item_type",
         "planet_item_url",
+        "planet_arcgis_xyz_url",
     ]
     writer = csv.DictWriter(buf, fieldnames=fields)
     writer.writeheader()
     for item in items:
         item_id = item["id"]
+        item_type = item.get("item_type") or ITEM_TYPE
         writer.writerow(
             {
                 "item_id": item_id,
@@ -983,8 +993,9 @@ def make_csv(items: list[dict[str, Any]], statuses: dict[str, str]) -> str:
                 "visible_percent": item.get("visible_percent", ""),
                 "clear_percent": item.get("clear_percent", ""),
                 "satellite_id": item.get("satellite_id", ""),
-                "item_type": item.get("item_type", ""),
+                "item_type": item_type,
                 "planet_item_url": f"https://www.planet.com/explorer/?item={item_id}",
+                "planet_arcgis_xyz_url": planet_arcgis_xyz_url(str(item_id), str(item_type), api_key),
             }
         )
     return buf.getvalue()
@@ -1508,7 +1519,8 @@ def planet_tile_proxy(item_type: str, item_id: str, zoom: int, x: int, y: int):
 def export_kept_csv():
     state = get_state()
     kept = [item for item in state["items"] if state["statuses"].get(item["id"]) == "keep"]
-    csv_text = make_csv(kept, state["statuses"])
+    api_key = normalise_api_key(state.get("api_key") or load_default_api_key())
+    csv_text = make_csv(kept, state["statuses"], api_key)
     filename = f"planet_kept_images_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
     return Response(
         csv_text,
