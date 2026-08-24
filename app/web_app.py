@@ -949,7 +949,7 @@ def planet_arcgis_xyz_url(item_id: str, item_type: str, api_key: str = "") -> st
     encoded_key = quote(normalise_api_key(api_key), safe="")
     key_part = encoded_key or "{api-key}"
     return (
-        f"https://tiles{{0-3}}.planet.com/data/v1/{item_type}/{item_id}"
+        f"https://tiles1.planet.com/data/v1/{item_type}/{item_id}"
         f"/{{level}}/{{col}}/{{row}}.png?api_key={key_part}"
     )
 
