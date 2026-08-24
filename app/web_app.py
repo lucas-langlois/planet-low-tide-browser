@@ -945,11 +945,12 @@ def load_preview_tiles(api_key: str, item_id: str, item_type: str, aoi: dict[str
     return load_center_preview_tiles(api_key, item_id, item_type, center_lat, center_lon, mode)
 
 
-def planet_arcgis_xyz_url(item_id: str, item_type: str, api_key: str) -> str:
+def planet_arcgis_xyz_url(item_id: str, item_type: str, api_key: str = "") -> str:
     encoded_key = quote(normalise_api_key(api_key), safe="")
+    key_part = encoded_key or "{api-key}"
     return (
         f"https://tiles{{0-3}}.planet.com/data/v1/{item_type}/{item_id}"
-        f"/{{level}}/{{col}}/{{row}}.png?api_key={encoded_key}"
+        f"/{{level}}/{{col}}/{{row}}.png?api_key={key_part}"
     )
 
 
@@ -1408,6 +1409,8 @@ def api_search():
 
     state = get_state()
     state["api_key"] = api_key
+    state["api_key_source"] = key_source
+    state["export_api_key"] = api_key if submitted_key else ""
     state["aoi"] = aoi
     state["items"] = items
     state["statuses"] = {item["id"]: "pending" for item in items}
@@ -1519,13 +1522,17 @@ def planet_tile_proxy(item_type: str, item_id: str, zoom: int, x: int, y: int):
 def export_kept_csv():
     state = get_state()
     kept = [item for item in state["items"] if state["statuses"].get(item["id"]) == "keep"]
-    api_key = normalise_api_key(state.get("api_key") or load_default_api_key())
+    api_key = normalise_api_key(state.get("export_api_key"))
     csv_text = make_csv(kept, state["statuses"], api_key)
     filename = f"planet_kept_images_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
     return Response(
         csv_text,
         mimetype="text/csv",
-        headers={"Content-Disposition": f"attachment; filename={filename}"},
+        headers={
+            "Content-Disposition": f"attachment; filename={filename}",
+            "Cache-Control": "no-store, private",
+            "Pragma": "no-cache",
+        },
     )
 
 
